@@ -1,3 +1,4 @@
+<!-- 已迁移至 GitHub Issues：地图 = https://github.com/2017fighting/guo/issues/1 。本目录为只读存档，勿再更新。 -->
 # 红果 Web 版地图（浏览·搜索·播放·下载进 Jellyfin）
 
 ## Destination
