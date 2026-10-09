@@ -2,7 +2,7 @@
 //
 // 依据 docs/research/jellyfin-integration.md 第 5 节：
 //   - 鉴权只用 Authorization: MediaBrowser Token="<API_KEY>"（legacy 头/参数将移除）
-//   - 验活 GET /System/Info；刷新 POST /Library/Refresh（204，会等扫描跑完才返回，
+//   - 验活 GET /System/Info；刷新 POST /Library/Refresh（204，服务端跑完库刷新才返回，
 //     客户端须设分钟级超时并异步触发；失败只记日志不阻断下载流程）
 package jellyfin
 
@@ -63,7 +63,7 @@ func (c *Client) Validate(ctx context.Context) error {
 	return nil
 }
 
-// RefreshAsync 异步触发全库扫描（POST /Library/Refresh），立即返回。
+// RefreshAsync 异步触发全库刷新（POST /Library/Refresh），立即返回。
 // 未配置时为空操作；失败只上报 OnError。
 func (c *Client) RefreshAsync() {
 	if !c.Enabled() {

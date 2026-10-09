@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"path"
 	"strings"
-	"unicode"
 	"unicode/utf8"
 )
 
@@ -39,13 +38,18 @@ func SafeName(name string) string {
 	return s
 }
 
-// ShowDir 返回剧目录：MEDIA_DIR/剧名 (年份)。年份为空时只有剧名。
-func ShowDir(root, title, year string) string {
+// ShowName 返回剧目录名（含可选年份），ShowDir 与分集 NFO 的 showtitle 共用。
+func ShowName(title, year string) string {
 	name := SafeName(title)
 	if year != "" {
 		name = fmt.Sprintf("%s (%s)", name, SafeName(year))
 	}
-	return path.Join(root, name)
+	return name
+}
+
+// ShowDir 返回剧目录：MEDIA_DIR/剧名 (年份)。年份为空时只有剧名。
+func ShowDir(root, title, year string) string {
+	return path.Join(root, ShowName(title, year))
 }
 
 // SeasonDir 返回季目录：剧目录/Season NN（季号补零到两位，短剧恒为 1）。
@@ -76,5 +80,3 @@ func (e Episode) NFO() string   { return path.Join(e.Dir, e.Stem+".nfo") }
 func (e Episode) ASS() string   { return path.Join(e.Dir, e.Stem+".zh.ass") }
 func (e Episode) Thumb() string { return path.Join(e.Dir, e.Stem+"-thumb.jpg") }
 func (e Episode) Part() string  { return path.Join(e.Dir, e.Stem+".part") }
-
-var _ = unicode.IsSpace // 保留：将来按需扩展

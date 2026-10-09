@@ -113,7 +113,7 @@ func newEngine(t *testing.T) (*Engine, *fakeSource, *fakeFFmpeg, string) {
 
 func mustAdd(t *testing.T, e *Engine, id string, eps []int) *store.Job {
 	t.Helper()
-	j, err := e.AddJob(context.Background(), id, eps)
+	j, err := e.AddJob(context.Background(), id, eps, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -281,6 +281,7 @@ func TestEpisodeFailureRetriesAndJobFailed(t *testing.T) {
 	// 覆盖 ResolveStream：bad 报错
 	src2 := &failingSource{fakeSource: *src}
 	e.Source = src2
+	e.MaxRetries = 1 // 测试路径：不重试，加快用例
 
 	mustAdd(t, e, "44", nil)
 	if err := e.Run(context.Background()); err != nil {
@@ -373,6 +374,117 @@ func TestDeleteJobKeepVideo(t *testing.T) {
 	}
 	if err := e.DeleteJob("hongguo:46", false); err == nil {
 		t.Fatal("second delete should 404")
+	}
+}
+
+func TestURLExpiredReResolveUsesFreshKey(t *testing.T) {
+	e, src, ff, _ := newEngine(t)
+	media := []byte(strings.Repeat("K", 1024))
+	var hits, expired int32
+	msrv := newMediaServer(t, media, &hits, &expired)
+	src.meta = DramaMeta{Title: "换钥剧", Episodes: []EpisodeInfo{{1, "v1"}}}
+	// 首次解析：带旧 key；URL 首清 410，重取后换新 key（模拟换线路换密钥）
+	src.streams = map[string]*Stream{"v1": {URL: msrv.URL + "/m.mp4", CENCKeyHex: "00000000000000000000000000000000", DurationMS: 1000}}
+	flippy := &keyFlipSource{fakeSource: *src, newKey: "ffffffffffffffffffffffffffffffff"}
+	e.Source = flippy
+	mustAdd(t, e, "47", []int{1})
+	if err := e.Run(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	j, _ := e.Store.GetJob("hongguo:47")
+	if j.Status != store.JobDone {
+		t.Fatalf("status = %s", j.Status)
+	}
+	sawNew, sawOld := false, false
+	for _, call := range ff.calls {
+		for i, a := range call {
+			if a == "-decryption_key" && i+1 < len(call) {
+				switch call[i+1] {
+				case "ffffffffffffffffffffffffffffffff":
+					sawNew = true
+				case "00000000000000000000000000000000":
+					sawOld = true
+				}
+			}
+		}
+	}
+	if !sawNew || sawOld {
+		t.Fatalf("ffmpeg key stale: new=%v old=%v", sawNew, sawOld)
+	}
+}
+
+type keyFlipSource struct {
+	fakeSource
+	newKey   string
+	resolved int32
+}
+
+func (k *keyFlipSource) ResolveStream(ctx context.Context, seriesID, vid string, quality int) (*Stream, error) {
+	n := atomic.AddInt32(&k.resolved, 1)
+	s, err := k.fakeSource.ResolveStream(ctx, seriesID, vid, quality)
+	if err != nil {
+		return nil, err
+	}
+	if n > 1 { // 第二次解析（重取）换新 key
+		s.CENCKeyHex = k.newKey
+	}
+	return s, nil
+}
+
+func TestQualityPersisted(t *testing.T) {
+	e, src, _, _ := newEngine(t)
+	media := []byte("Q")
+	var hits int32
+	msrv := newMediaServer(t, media, &hits, nil)
+	src.meta = DramaMeta{Title: "画质剧", Episodes: []EpisodeInfo{{1, "v1"}}}
+	src.streams = map[string]*Stream{"v1": {URL: msrv.URL + "/q.mp4", DurationMS: 1000}}
+	j, err := e.AddJob(context.Background(), "48", []int{1}, 720)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if j.Quality != 720 {
+		t.Fatalf("quality = %d", j.Quality)
+	}
+	got, _ := e.Store.GetJob("hongguo:48")
+	if got.Quality != 720 {
+		t.Fatalf("persisted quality = %d", got.Quality)
+	}
+}
+
+func TestDoneJobRequeuesOnNewEpisodes(t *testing.T) {
+	e, src, _, _ := newEngine(t)
+	media := []byte("R")
+	var hits int32
+	msrv := newMediaServer(t, media, &hits, nil)
+	src.meta = DramaMeta{Title: "更新剧", Episodes: []EpisodeInfo{{1, "v1"}}}
+	src.streams = map[string]*Stream{"v1": {URL: msrv.URL + "/r1.mp4", DurationMS: 1000}}
+	mustAdd(t, e, "49", []int{1})
+	if err := e.Run(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	j, _ := e.Store.GetJob("hongguo:49")
+	if j.Status != store.JobDone {
+		t.Fatalf("precondition: status = %s", j.Status)
+	}
+	// 「更新本剧」：源上新了第 2 集，重新 add 后任务应自动回队列
+	src.meta.Episodes = append(src.meta.Episodes, EpisodeInfo{2, "v2"})
+	src.streams["v2"] = &Stream{URL: msrv.URL + "/r2.mp4", DurationMS: 1000}
+	j2, err := e.AddJob(context.Background(), "49", []int{2}, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if j2.Status != store.JobQueued {
+		t.Fatalf("requeued status = %s", j2.Status)
+	}
+	if err := e.Run(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	j3, _ := e.Store.GetJob("hongguo:49")
+	if j3.Status != store.JobDone {
+		t.Fatalf("final status = %s", j3.Status)
+	}
+	if !fileExists(filepath.Join(e.MediaRoot, "更新剧", "Season 01", "S01E002.mp4")) {
+		t.Fatal("new episode not downloaded")
 	}
 }
 

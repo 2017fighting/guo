@@ -17,12 +17,12 @@ func open(t *testing.T) *Store {
 
 func TestCreateJobIdempotent(t *testing.T) {
 	s := open(t)
-	j1, err := s.CreateJob("hongguo:123", "剧名", "2025", map[int]string{1: "v1", 2: "v2"})
+	j1, err := s.CreateJob("hongguo:123", "剧名", "2025", 0, map[int]string{1: "v1", 2: "v2"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	// 同剧再来：更新选集（补第 3 集），不新建任务
-	j2, err := s.CreateJob("hongguo:123", "剧名", "2025", map[int]string{1: "v1", 3: "v3"})
+	j2, err := s.CreateJob("hongguo:123", "剧名", "2025", 0, map[int]string{1: "v1", 3: "v3"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -40,7 +40,7 @@ func TestCreateJobIdempotent(t *testing.T) {
 
 func TestJobStatusFlow(t *testing.T) {
 	s := open(t)
-	j, _ := s.CreateJob("hongguo:1", "t", "", map[int]string{1: "v"})
+	j, _ := s.CreateJob("hongguo:1", "t", "", 0, map[int]string{1: "v"})
 	if err := s.SetJobStatus(j.ID, JobRunning); err != nil {
 		t.Fatal(err)
 	}
@@ -58,7 +58,7 @@ func TestJobStatusFlow(t *testing.T) {
 
 func TestEpisodeStatusAndRetries(t *testing.T) {
 	s := open(t)
-	j, _ := s.CreateJob("hongguo:2", "t", "", map[int]string{1: "v"})
+	j, _ := s.CreateJob("hongguo:2", "t", "", 0, map[int]string{1: "v"})
 	for _, st := range []string{EpDownloading, EpMerging, EpFailed, EpPending, EpFailed, EpDone} {
 		if err := s.SetEpisodeStatus(j.ID, 1, st); err != nil {
 			t.Fatal(err)
@@ -72,7 +72,7 @@ func TestEpisodeStatusAndRetries(t *testing.T) {
 
 func TestEpisodeMeta(t *testing.T) {
 	s := open(t)
-	j, _ := s.CreateJob("hongguo:3", "t", "", map[int]string{1: "v"})
+	j, _ := s.CreateJob("hongguo:3", "t", "", 0, map[int]string{1: "v"})
 	if err := s.SaveEpisodeMeta(j.ID, 1, "cenc_key", "aabb"); err != nil {
 		t.Fatal(err)
 	}
@@ -102,7 +102,7 @@ func TestSettingsAndDeleteCascade(t *testing.T) {
 	if v, _ := s.Setting("media_dir"); v != "/media" {
 		t.Fatalf("setting = %q", v)
 	}
-	j, _ := s.CreateJob("hongguo:4", "t", "", map[int]string{1: "v"})
+	j, _ := s.CreateJob("hongguo:4", "t", "", 0, map[int]string{1: "v"})
 	_ = s.SaveEpisodeMeta(j.ID, 1, "k", "v")
 	if err := s.DeleteJob("hongguo:4"); err != nil {
 		t.Fatal(err)
@@ -118,7 +118,7 @@ func TestSettingsAndDeleteCascade(t *testing.T) {
 func TestListJobsOrder(t *testing.T) {
 	s := open(t)
 	for _, id := range []string{"hongguo:a", "hongguo:b", "hongguo:c"} {
-		s.CreateJob(id, "t", "", map[int]string{1: "v"})
+		s.CreateJob(id, "t", "", 0, map[int]string{1: "v"})
 	}
 	jobs, _ := s.ListJobs()
 	if len(jobs) != 3 || jobs[0].DramaID != "hongguo:c" {

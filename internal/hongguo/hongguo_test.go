@@ -282,9 +282,9 @@ func danmakuFixture(next string, items ...map[string]any) map[string]any {
 	return map[string]any{
 		"code": 0,
 		"data": map[string]any{
-			"data_list":            rows,
-			"extra":                map[string]any{"next_query_danmaku_list_time": next},
-			"common_list_info":     map[string]any{"cursor": `{"danmaku_count":250}`, "has_more": false},
+			"data_list":        rows,
+			"extra":            map[string]any{"next_query_danmaku_list_time": next},
+			"common_list_info": map[string]any{"cursor": `{"danmaku_count":250}`, "has_more": false},
 		},
 	}
 }
@@ -303,8 +303,8 @@ func danmakuComment(id, text, offset, status string) map[string]any {
 func TestParseDanmakuPage(t *testing.T) {
 	page := danmakuFixture("30000",
 		danmakuComment("c1", "第一句", "1500", "1"),
-		danmakuComment("c2", "隐藏的", "2000", "2"),     // status != 1 → 丢弃
-		danmakuComment("c3", "越界的", "31000", "1"),    // 超出窗口 → 丢弃
+		danmakuComment("c2", "隐藏的", "2000", "2"),      // status != 1 → 丢弃
+		danmakuComment("c3", "越界的", "31000", "1"),     // 超出窗口 → 丢弃
 		danmakuComment("c4", "控制\x01符", "16000", "1"), // 净化
 	)
 	result, err := parseDanmakuPage(page, "800001", 0, 60000)
@@ -381,12 +381,12 @@ func TestDetailViaAppRequest(t *testing.T) {
 			"code": 0,
 			"data": map[string]any{
 				"video_data": map[string]any{
-					"series_id_str": "700001",
-					"series_title":  "测试剧",
-					"series_intro":  "简介",
-					"series_cover":  "//p.test/cover.jpg",
-					"episode_cnt":   "2",
-					"tags":          []any{"都市", "甜宠"},
+					"series_id_str":      "700001",
+					"series_title":       "测试剧",
+					"series_intro":       "简介",
+					"series_cover":       "//p.test/cover.jpg",
+					"episode_cnt":        "2",
+					"tags":               []any{"都市", "甜宠"},
 					"first_visible_time": "1735689600000",
 					"video_list": []any{
 						map[string]any{"vid": "800001", "vid_index": "1", "series_id": "700001"},

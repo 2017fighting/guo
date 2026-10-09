@@ -54,11 +54,18 @@ func main() {
 		Store:     st,
 		Source:    hongguo.NewClient(),
 		MediaRoot: env("GUO_MEDIA_DIR", "./media"),
-		ASSExport: true,
+		FFMpeg:    &pipeline.ExecRunner{Path: env("GUO_FFMPEG", "ffmpeg")}, // P0 修复：接真实 ffmpeg
+		ASSExport: assExportSetting(st),
 		Jellyfin:  jf,
 		Log:       func(m string) { fmt.Fprintln(os.Stderr, "[guo]", m) },
 	}
 	if n, err := strconv.Atoi(env("GUO_CONCURRENCY", "2")); err == nil {
+		if n < 1 {
+			n = 1
+		}
+		if n > 6 {
+			n = 6 // #7 决议：可配 1–6
+		}
 		engine.Concurrency = n
 	}
 
@@ -66,16 +73,28 @@ func main() {
 	cmd, args := os.Args[1], os.Args[2:]
 	switch cmd {
 	case "add":
-		mustArg(args, 1, "add <seriesID> [集号...]")
+		mustArg(args, 1, "add <seriesID> [-q 画质档] [分集号...]")
+		quality := 0
 		var eps []int
+		prev := ""
 		for _, a := range args[1:] {
+			if a == "-q" {
+				prev = a
+				continue
+			}
 			n, err := strconv.Atoi(a)
 			must(err)
-			eps = append(eps, n)
+			// -q 后的第一个数字是画质档，其余为分集号
+			if quality == 0 && prev == "-q" {
+				quality = n
+			} else {
+				eps = append(eps, n)
+			}
+			prev = a
 		}
-		job, err := engine.AddJob(ctx, args[0], eps)
+		job, err := engine.AddJob(ctx, args[0], eps, quality)
 		must(err)
-		fmt.Printf("任务已建：%s（#%d）→ %s\n", job.Title, job.ID, engine.MediaRoot)
+		fmt.Printf("任务已建：%s（#%d，画质档 %d）→ %s\n", job.Title, job.ID, job.Quality, engine.MediaRoot)
 	case "run":
 		must(engine.Run(ctx))
 		fmt.Println("队列已排空")
@@ -120,6 +139,14 @@ func mustArg(args []string, n int, usageLine string) {
 		fmt.Fprintln(os.Stderr, "用法: guo", usageLine)
 		os.Exit(2)
 	}
+}
+
+// assExportSetting：settings 表优先（键 ass_export），环境变量 GUO_ASS_EXPORT 兜底，默认开。
+func assExportSetting(st *store.Store) bool {
+	if v, err := st.Setting("ass_export"); err == nil {
+		return v == "1" || v == "true"
+	}
+	return env("GUO_ASS_EXPORT", "1") != "0"
 }
 
 func must(err error) {

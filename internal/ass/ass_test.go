@@ -121,7 +121,7 @@ func TestDedupSortAndClean(t *testing.T) {
 	cs := []Comment{
 		{ID: "x", Text: "晚到", TimeMS: 9000},
 		{ID: "a", Text: "早到", TimeMS: 1000},
-		{ID: "a", Text: "重复", TimeMS: 2000}, // 同 ID 去重，保留先出现
+		{ID: "a", Text: "重复", TimeMS: 2000},   // 同 ID 去重，保留先出现
 		{ID: "b", Text: "\x01", TimeMS: 3000}, // 净化后为空，整条丢弃
 	}
 	out := Convert(cs, Options{})

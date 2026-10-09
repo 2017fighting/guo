@@ -42,6 +42,7 @@ type Job struct {
 	DramaID   string // hongguo:<seriesID>
 	Title     string
 	Year      string
+	Quality   int // 期望画质档（0 = 最高）
 	Status    string
 	CreatedAt time.Time
 	UpdatedAt time.Time
@@ -49,12 +50,12 @@ type Job struct {
 
 // Episode 任务内的一个分集。
 type Episode struct {
-	JobID      int64
-	Index      int // 分集序号（1 起）
-	VID        string
-	Status     string
-	Retries    int
-	UpdatedAt  time.Time
+	JobID     int64
+	Index     int // 分集序号（1 起）
+	VID       string
+	Status    string
+	Retries   int
+	UpdatedAt time.Time
 }
 
 // Store SQLite 存储；所有方法并发安全（单连接 + WAL 足够，队列写频极低）。
@@ -86,6 +87,7 @@ CREATE TABLE IF NOT EXISTS jobs (
   drama_id   TEXT NOT NULL UNIQUE,
   title      TEXT NOT NULL,
   year       TEXT NOT NULL DEFAULT '',
+  quality    INTEGER NOT NULL DEFAULT 0,
   status     TEXT NOT NULL DEFAULT 'queued',
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL
@@ -118,7 +120,7 @@ func now() int64 { return time.Now().Unix() }
 
 // CreateJob 新建任务（幂等：同剧已存在时更新选集并返回既有任务）。
 // episodes 为选中的分集序号→videoID。
-func (s *Store) CreateJob(dramaID, title, year string, episodes map[int]string) (*Job, error) {
+func (s *Store) CreateJob(dramaID, title, year string, quality int, episodes map[int]string) (*Job, error) {
 	var job Job
 	err := s.withTx(func(tx *sql.Tx) error {
 		row := tx.QueryRow(`SELECT id, status FROM jobs WHERE drama_id=?`, dramaID)
@@ -126,8 +128,8 @@ func (s *Store) CreateJob(dramaID, title, year string, episodes map[int]string) 
 		err := row.Scan(&job.ID, &status)
 		switch {
 		case errors.Is(err, sql.ErrNoRows):
-			res, err := tx.Exec(`INSERT INTO jobs(drama_id,title,year,status,created_at,updated_at)
-				VALUES(?,?,?,?,?,?)`, dramaID, title, year, JobQueued, now(), now())
+			res, err := tx.Exec(`INSERT INTO jobs(drama_id,title,year,quality,status,created_at,updated_at)
+				VALUES(?,?,?,?,?,?,?)`, dramaID, title, year, quality, JobQueued, now(), now())
 			if err != nil {
 				return err
 			}
@@ -139,8 +141,8 @@ func (s *Store) CreateJob(dramaID, title, year string, episodes map[int]string) 
 		case err != nil:
 			return err
 		default:
-			if _, err := tx.Exec(`UPDATE jobs SET title=?, year=?, updated_at=? WHERE id=?`,
-				title, year, now(), job.ID); err != nil {
+			if _, err := tx.Exec(`UPDATE jobs SET title=?, year=?, quality=CASE WHEN ?!=0 THEN ? ELSE quality END, updated_at=? WHERE id=?`,
+				title, year, quality, quality, now(), job.ID); err != nil {
 				return err
 			}
 		}
@@ -174,11 +176,11 @@ func (s *Store) withTx(fn func(*sql.Tx) error) error {
 
 // GetJob 按剧 ID 取任务。
 func (s *Store) GetJob(dramaID string) (*Job, error) {
-	row := s.db.QueryRow(`SELECT id, drama_id, title, year, status, created_at, updated_at
+	row := s.db.QueryRow(`SELECT id, drama_id, title, year, quality, status, created_at, updated_at
 		FROM jobs WHERE drama_id=?`, dramaID)
 	var j Job
 	var c, u int64
-	if err := row.Scan(&j.ID, &j.DramaID, &j.Title, &j.Year, &j.Status, &c, &u); err != nil {
+	if err := row.Scan(&j.ID, &j.DramaID, &j.Title, &j.Year, &j.Quality, &j.Status, &c, &u); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrNotFound
 		}
@@ -190,7 +192,7 @@ func (s *Store) GetJob(dramaID string) (*Job, error) {
 
 // ListJobs 全量任务（新到旧）。
 func (s *Store) ListJobs() ([]Job, error) {
-	rows, err := s.db.Query(`SELECT id, drama_id, title, year, status, created_at, updated_at
+	rows, err := s.db.Query(`SELECT id, drama_id, title, year, quality, status, created_at, updated_at
 		FROM jobs ORDER BY id DESC`)
 	if err != nil {
 		return nil, err
@@ -200,7 +202,7 @@ func (s *Store) ListJobs() ([]Job, error) {
 	for rows.Next() {
 		var j Job
 		var c, u int64
-		if err := rows.Scan(&j.ID, &j.DramaID, &j.Title, &j.Year, &j.Status, &c, &u); err != nil {
+		if err := rows.Scan(&j.ID, &j.DramaID, &j.Title, &j.Year, &j.Quality, &j.Status, &c, &u); err != nil {
 			return nil, err
 		}
 		j.CreatedAt, j.UpdatedAt = time.Unix(c, 0), time.Unix(u, 0)

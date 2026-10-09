@@ -62,9 +62,9 @@ func (c *Client) Detail(ctx context.Context, seriesID string) (*pipeline.DramaMe
 // dramaFromCard 从 video_data 卡片提取剧级元数据（字段别名对齐 guoapp hongguoDramaFromAny）。
 func dramaFromCard(m map[string]any) pipeline.DramaMeta {
 	meta := pipeline.DramaMeta{
-		Title:     firstNonEmpty(mapString(m, "series_title", "series_name", "title"), "未命名短剧"),
-		Plot:      mapString(m, "series_intro", "video_desc"),
-		CoverURL:  normalizeCover(mapString(m, "series_cover", "cover")),
+		Title:    firstNonEmpty(mapString(m, "series_title", "series_name", "title"), "未命名剧"),
+		Plot:     mapString(m, "series_intro", "video_desc"),
+		CoverURL: normalizeCover(mapString(m, "series_cover", "cover")),
 	}
 	// 年份：first_visible_time 时间戳（毫秒/秒自适应），东八区。
 	if ts := mapString(m, "first_visible_time"); ts != "" {

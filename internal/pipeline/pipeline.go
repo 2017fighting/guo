@@ -6,15 +6,18 @@
 package pipeline
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/2017fighting/guo/internal/ass"
 	"github.com/2017fighting/guo/internal/jellyfin"
@@ -65,19 +68,41 @@ type Runner interface {
 	Run(ctx context.Context, args ...string) error
 }
 
+// ExecRunner 真实 ffmpeg 执行器（容器/宿主机内置 ffmpeg 二进制）。
+type ExecRunner struct {
+	Path string // 默认 ffmpeg
+}
+
+func (r *ExecRunner) Run(ctx context.Context, args ...string) error {
+	path := r.Path
+	if path == "" {
+		path = "ffmpeg"
+	}
+	cmd := exec.CommandContext(ctx, path, args...)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("%s: %w", strings.TrimSpace(stderr.String()), err)
+	}
+	return nil
+}
+
 // Engine 下载引擎。
 type Engine struct {
-	Store      *store.Store
-	Source     Source
-	MediaRoot  string
-	FFMpeg     Runner
+	Store       *store.Store
+	Source      Source
+	MediaRoot   string
+	FFMpeg      Runner
 	Concurrency int  // 全局同时下载数，默认 2
-	ASSExport  bool  // 弹幕导出默认开
-	MaxRetries int   // 分集自动重试上限，默认 3
-	Jellyfin   *jellyfin.Client
-	HTTP       *http.Client
-	Log        func(string)
+	ASSExport   bool // 弹幕导出默认开
+	MaxRetries  int  // 分集自动重试上限，默认 3
+	Jellyfin    *jellyfin.Client
+	HTTP        *http.Client
+	Log         func(string)
 }
+
+// IPhoneUA 媒体与页面请求共用 UA（对齐 guoapp mediaRequestHeaders）。
+const IPhoneUA = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1"
 
 const metaKeyCENC = "cenc_key"
 
@@ -107,7 +132,8 @@ func (e *Engine) client() *http.Client {
 
 // AddJob 建任务：入库 + 立即写剧集级产物（tvshow.nfo / poster.jpg），
 // 使 Jellyfin 在下载过程中即可见该剧（#7 决议第 1 项）。
-func (e *Engine) AddJob(ctx context.Context, seriesID string, indexes []int) (*store.Job, error) {
+// quality 为期望画质档（0 = 最高）；已完结任务补新分集时自动回到队列（「更新本剧」）。
+func (e *Engine) AddJob(ctx context.Context, seriesID string, indexes []int, quality int) (*store.Job, error) {
 	meta, err := e.Source.Detail(ctx, seriesID)
 	if err != nil {
 		return nil, fmt.Errorf("detail: %w", err)
@@ -127,9 +153,21 @@ func (e *Engine) AddJob(ctx context.Context, seriesID string, indexes []int) (*s
 	if len(eps) == 0 {
 		return nil, errors.New("no episodes selected")
 	}
-	job, err := e.Store.CreateJob("hongguo:"+seriesID, meta.Title, meta.Year, eps)
+	job, err := e.Store.CreateJob("hongguo:"+seriesID, meta.Title, meta.Year, quality, eps)
 	if err != nil {
 		return nil, err
+	}
+	// 「更新本剧」：已完结任务补了新分集时重新入队
+	if job.Status == store.JobDone {
+		if eps2, lerr := e.Store.Episodes(job.ID); lerr == nil {
+			for _, ep2 := range eps2 {
+				if ep2.Status != store.EpDone {
+					_ = e.Store.SetJobStatus(job.ID, store.JobQueued)
+					job.Status = store.JobQueued
+					break
+				}
+			}
+		}
 	}
 
 	showDir := layout.ShowDir(e.MediaRoot, meta.Title, meta.Year)
@@ -219,11 +257,32 @@ func (e *Engine) runJob(ctx context.Context, jobID int64) error {
 			anyFailed = true // 永久失败，不再尝试
 			continue
 		}
-		if err := e.processEpisode(ctx, job, ep.Index, ep.VID); err != nil {
-			e.log(fmt.Sprintf("分集 %d 失败: %v", ep.Index, err))
-			_ = e.Store.SetEpisodeStatus(jobID, ep.Index, store.EpFailed)
+		// 分集失败自动重试有限次（#7 决议第 5 项）；重试耗尽即放下，不阻塞后续分集
+		epDone := false
+	forAttempt:
+		for attempt := 0; ; attempt++ {
+			if perr := e.processEpisode(ctx, job, ep.Index, ep.VID); perr == nil {
+				epDone = true
+				break forAttempt
+			} else {
+				e.log(fmt.Sprintf("分集 %d 第 %d 次尝试失败: %v", ep.Index, attempt+1, perr))
+				_ = e.Store.SetEpisodeStatus(jobID, ep.Index, store.EpFailed)
+				if latest, lerr := e.Store.Episodes(jobID); lerr == nil {
+					for _, fe := range latest {
+						if fe.Index == ep.Index && fe.Retries >= e.maxRetries() {
+							break forAttempt
+						}
+					}
+				}
+				select {
+				case <-time.After(time.Duration(attempt+1) * 2 * time.Second):
+				case <-ctx.Done():
+					return ctx.Err()
+				}
+			}
+		}
+		if !epDone {
 			anyFailed = true
-			continue // 分集失败不阻塞剧内后续分集
 		}
 	}
 	if anyFailed {
@@ -263,7 +322,7 @@ func (e *Engine) processEpisode(ctx context.Context, job *store.Job, index int, 
 		return err
 	}
 
-	stream, err := e.Source.ResolveStream(ctx, seriesID, vid, 0)
+	stream, err := e.Source.ResolveStream(ctx, seriesID, vid, job.Quality)
 	if err != nil {
 		return fmt.Errorf("resolve: %w", err)
 	}
@@ -273,8 +332,9 @@ func (e *Engine) processEpisode(ctx context.Context, job *store.Job, index int, 
 		}
 	}
 
-	// 断点下载：403/410（URL 过期）时重取一次流继续。
-	if err := e.download(ctx, stream, epLayout.Part(), job.ID, index, seriesID, vid); err != nil {
+	// 断点下载：403/410（URL 过期）时重取流继续；返回生效的流（密钥可能已更新）。
+	stream, err = e.download(ctx, stream, epLayout.Part(), job.ID, index, seriesID, vid, job.Quality)
+	if err != nil {
 		return fmt.Errorf("download: %w", err)
 	}
 
@@ -287,12 +347,8 @@ func (e *Engine) processEpisode(ctx context.Context, job *store.Job, index int, 
 	}
 	os.Remove(epLayout.Part())
 
-	showTitle := layout.SafeName(job.Title)
-	if job.Year != "" {
-		showTitle = fmt.Sprintf("%s (%s)", showTitle, layout.SafeName(job.Year))
-	}
 	epNFO, err := nfo.Episode{
-		Title: fmt.Sprintf("第 %d 集", index), ShowTitle: showTitle,
+		Title: fmt.Sprintf("第 %d 集", index), ShowTitle: layout.ShowName(job.Title, job.Year),
 		Season: 1, Episode: index, UniqueID: vid,
 	}.Marshal()
 	if err != nil {
@@ -333,28 +389,29 @@ func ffmpegArgs(keyHex, in, out string) []string {
 }
 
 // download 带 Range 断点续传的直链下载；403/410 时重取流地址一次。
+// 返回最终生效的流（重取后地址/密钥可能已变，调用方必须用返回值）。
 func (e *Engine) download(ctx context.Context, stream *Stream, partPath string,
-	jobID int64, index int, seriesID, vid string) error {
+	jobID int64, index int, seriesID, vid string, quality int) (*Stream, error) {
 	var err error
 	for attempt := 0; attempt < 2; attempt++ {
 		err = e.downloadOnce(ctx, stream, partPath)
 		if err == nil {
-			return nil
+			return stream, nil
 		}
 		if !errors.Is(err, errURLExpired) {
-			return err
+			return nil, err
 		}
 		e.log(fmt.Sprintf("分集 %d 流地址过期，重取", index))
-		fresh, rerr := e.Source.ResolveStream(ctx, seriesID, vid, 0)
+		fresh, rerr := e.Source.ResolveStream(ctx, seriesID, vid, quality)
 		if rerr != nil {
-			return fmt.Errorf("re-resolve: %w", rerr)
+			return nil, fmt.Errorf("re-resolve: %w", rerr)
 		}
 		if fresh.CENCKeyHex != "" {
 			_ = e.Store.SaveEpisodeMeta(jobID, index, metaKeyCENC, fresh.CENCKeyHex)
 		}
 		stream = fresh
 	}
-	return err
+	return nil, err
 }
 
 var errURLExpired = errors.New("stream url expired (403/410)")
@@ -379,7 +436,7 @@ func (e *Engine) downloadOnce(ctx context.Context, stream *Stream, partPath stri
 	if stream.Referer != "" {
 		req.Header.Set("Referer", stream.Referer)
 	}
-	req.Header.Set("User-Agent", "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1")
+	req.Header.Set("User-Agent", IPhoneUA)
 	req.Header.Set("Accept", "*/*")
 	resp, err := e.client().Do(req)
 	if err != nil {
@@ -436,8 +493,8 @@ func atomicWrite(path string, data []byte) error {
 }
 
 // PauseJob / ResumeJob / RetryJob / DeleteJob 任务控制。
-func (e *Engine) PauseJob(jobID int64) error    { return e.Store.SetJobStatus(jobID, store.JobPaused) }
-func (e *Engine) ResumeJob(jobID int64) error   { return e.Store.SetJobStatus(jobID, store.JobQueued) }
+func (e *Engine) PauseJob(jobID int64) error  { return e.Store.SetJobStatus(jobID, store.JobPaused) }
+func (e *Engine) ResumeJob(jobID int64) error { return e.Store.SetJobStatus(jobID, store.JobQueued) }
 func (e *Engine) RetryJob(jobID int64) error {
 	eps, err := e.Store.Episodes(jobID)
 	if err != nil {
@@ -467,4 +524,3 @@ func (e *Engine) DeleteJob(dramaID string, keepVideo bool) error {
 	}
 	return e.Store.DeleteJob(dramaID)
 }
-

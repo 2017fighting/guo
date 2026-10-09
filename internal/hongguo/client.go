@@ -41,7 +41,7 @@ func NewClient() *Client {
 	}
 }
 
-type commentMarker struct{}
+// commentMarker 旧版上下文标记已并入 appRequest 的 comment 参数。
 
 // appRequest App API 通用请求（设备参数 + 签名 + 重试 + 业务码校验）。
 // comment=true 时走弹幕（评论）签名全套（协议文档 §5.4）。

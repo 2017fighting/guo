@@ -8,28 +8,27 @@ package nfo
 
 import (
 	"encoding/xml"
-	"strings"
 )
 
 // Show 剧级元数据（来源：红果详情卡片）。
 type Show struct {
-	Title    string
-	Plot     string
-	Year     string // 可选，>1850 才生效
+	Title     string
+	Plot      string
+	Year      string // 可选，>1850 才生效
 	Premiered string // 可选，如 2025-03-01
-	Genres   []string
-	Studio   string
-	UniqueID string // 红果 seriesID
+	Genres    []string
+	Studio    string
+	UniqueID  string // 红果 seriesID
 }
 
 // Episode 分集元数据。
 type Episode struct {
-	Title    string // 如「第 3 集」
+	Title     string // 如「第 3 集」
 	ShowTitle string // 与剧目录名一致
-	Season   int
-	Episode  int
-	Plot     string
-	UniqueID string // 红果 videoID
+	Season    int
+	Episode   int
+	Plot      string
+	UniqueID  string // 红果 videoID
 }
 
 type uniqueID struct {
@@ -40,15 +39,15 @@ type uniqueID struct {
 }
 
 type xmlShow struct {
-	XMLName    xml.Name `xml:"tvshow"`
-	Title      string   `xml:"title"`
-	Plot       string   `xml:"plot"`
-	Year       string   `xml:"year,omitempty"`
-	Premiered  string   `xml:"premiered,omitempty"`
-	Genres     []string `xml:"genre"`
-	Studio     string   `xml:"studio,omitempty"`
-	UniqueID   uniqueID
-	LockData   bool     `xml:"lockdata"`
+	XMLName   xml.Name `xml:"tvshow"`
+	Title     string   `xml:"title"`
+	Plot      string   `xml:"plot"`
+	Year      string   `xml:"year,omitempty"`
+	Premiered string   `xml:"premiered,omitempty"`
+	Genres    []string `xml:"genre"`
+	Studio    string   `xml:"studio,omitempty"`
+	UniqueID  uniqueID
+	LockData  bool `xml:"lockdata"`
 }
 
 type xmlEpisode struct {
@@ -87,16 +86,4 @@ func (e Episode) Marshal() ([]byte, error) {
 		return nil, err
 	}
 	return []byte(xml.Header + string(out) + "\n"), nil
-}
-
-// Clean 剔除 XML 非法控制字符（正文已在源侧净化，这里兜底）。
-func Clean(s string) string {
-	var b strings.Builder
-	for _, r := range s {
-		if r < 0x20 && r != '\t' && r != '\n' && r != '\r' {
-			continue
-		}
-		b.WriteRune(r)
-	}
-	return b.String()
 }
