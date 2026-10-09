@@ -14,7 +14,7 @@ Blocked by: 01, 02, 03
 - 并发/暂停/继续/重试/删除语义
 - ffmpeg 合并与解密在链路中的落位
 - NFO + 图片生成的时机与字段
-- ASS 字幕导出（默认开/关、语言标记；依据 `docs/research/danmaku-ass.md`）
+- ASS 字幕导出（默认开/关、语言标记；依据 `docs/research/danmaku-ass.md`；含 **danmaku2ass GPL-3.0 许可证取舍**：算法重实现 vs 子进程调用）
 - 完成回调触发 Jellyfin 刷新
 - 失败与断点处理
 - 下载元数据持久化选型（SQLite/文件）——本图雾区该项在此毕业

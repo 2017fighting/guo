@@ -27,12 +27,13 @@
 
 ## Decisions so far
 
-（尚无已决票）
+- [红果源协议考古](issues/01-hongguo-protocol-research.md)：双协议面（官网 SSR + 字节 App API/Gorgon 签名）+ 三级取流回退；CENC 密钥 Go 层提取、解密在 ffmpeg demux 层——详见 `docs/research/hongguo-protocol.md`
+- [Jellyfin 集成面调研](issues/02-jellyfin-integration-research.md)：库结构/NFO/图片/外挂字幕命名规范与刷新 API 最小面，按 10.10/10.11 源码核对——详见 `docs/research/jellyfin-integration.md`
+- [弹幕转 ASS 字幕调研](issues/03-danmaku-ass-research.md)：转换核心是 danmaku2ass（GPL-3.0）；红果弹幕仅 ID/文本/毫秒偏移三字段，全部映射滚动弹幕——详见 `docs/research/danmaku-ass.md`
 
 ## Not yet specified
 
 - 数据持久化选型（下载队列/配置：SQLite 还是文件）——预计随「下载管线规格对谈」或「实现规格汇编收图」毕业
-- 浏览页筛选维度与排序项全集——等「红果源协议考古」结果
 - 下载完成通知（要不要、渠道）——随下载管线或汇编票毕业
 - Docker 镜像分发方式（compose 文档 / ghcr 发布）——随汇编票毕业
 - 多用户/权限（当前无认证；若将来暴露公网再议）
