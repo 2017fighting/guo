@@ -28,21 +28,30 @@ const webBaseURL = "https://hongguoduanju.com"
 var numericID = regexp.MustCompile(`^[0-9]{1,32}$`)
 var qualityNumber = regexp.MustCompile(`[0-9]+`)
 
-// ResolveStream 实现 pipeline.Source：App API 取流为主，失败回落第三方兜底 API。
-// TODO(下一块): Web 播放器页 SSR 线路（h264 无加密、guoapp 首选）尚未移植。
+// ResolveStream 实现 pipeline.Source：Web 播放器页优先（h264 无加密，guoapp v10 同序），
+// 失败回落 App API，再回落第三方兜底 API。
 func (c *Client) ResolveStream(ctx context.Context, seriesID, vid string, quality int) (*pipeline.Stream, error) {
 	if !numericID.MatchString(seriesID) || !numericID.MatchString(vid) {
 		return nil, errors.New("红果视频 ID 无效")
 	}
-	stream, appErr := c.resolveAppStream(ctx, vid)
-	if appErr == nil {
+	var webErr, appErr error
+	if stream, err := c.webStream(ctx, seriesID, vid); err == nil {
 		return stream, nil
+	} else {
+		webErr = err
 	}
-	stream, fbErr := c.resolveFallbackStream(ctx, seriesID, vid)
-	if fbErr == nil {
+	if stream, err := c.resolveAppStream(ctx, vid); err == nil {
 		return stream, nil
+	} else {
+		appErr = err
 	}
-	return nil, fmt.Errorf("App 线路: %v；兜底线路: %v", appErr, fbErr)
+	if stream, err := c.resolveFallbackStream(ctx, seriesID, vid); err == nil {
+		return stream, nil
+	} else if ctx.Err() != nil {
+		return nil, ctx.Err()
+	} else {
+		return nil, fmt.Errorf("网页取流: %v；App 取流: %v；兜底取流: %w", webErr, appErr, err)
+	}
 }
 
 // ---- App API 取流（video_model） ----

@@ -3,6 +3,7 @@ package hongguo
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"sort"
 	"strconv"
@@ -11,8 +12,25 @@ import (
 	"github.com/2017fighting/guo/internal/pipeline"
 )
 
-// Detail 实现 pipeline.Source：App 详情接口（video_detail）。
+// Detail 实现 pipeline.Source：App 详情优先，官网 SSR 兜底（独立客户端网络下 App 接口可能空响应）。
 func (c *Client) Detail(ctx context.Context, seriesID string) (*pipeline.DramaMeta, error) {
+	if !numericID.MatchString(seriesID) {
+		return nil, errors.New("红果剧集 ID 无效")
+	}
+	if meta, err := c.appDetail(ctx, seriesID); err == nil {
+		return meta, nil
+	} else if ctx.Err() != nil {
+		return nil, ctx.Err()
+	} else {
+		if wmeta, werr := c.webDetail(ctx, seriesID); werr == nil {
+			return wmeta, nil
+		} else {
+			return nil, fmt.Errorf("App 详情: %v；官网详情: %v", err, werr)
+		}
+	}
+}
+
+func (c *Client) appDetail(ctx context.Context, seriesID string) (*pipeline.DramaMeta, error) {
 	if !numericID.MatchString(seriesID) {
 		return nil, errors.New("红果剧集 ID 无效")
 	}
