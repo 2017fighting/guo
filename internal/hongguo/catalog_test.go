@@ -5,10 +5,12 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 )
 
 // ---- 目录 feed（App 分类 landpage 通道，guoapp-reference §1.1） ----
@@ -310,5 +312,165 @@ func TestCatalogRetriesWithEmptySession(t *testing.T) {
 	}
 	if atomic.LoadInt32(&attempts) != 1 {
 		t.Errorf("应先用原 session 失败一次再清空重试，attempts = %d", attempts)
+	}
+}
+
+// ---- 卡片规范化变体（landpage/rankings 两族键名兼容） ----
+
+func TestCatalogItemFromCardVariants(t *testing.T) {
+	cases := []struct {
+		name string
+		in   map[string]any
+		want CatalogItem
+	}{
+		{
+			name: "rankings 族键名",
+			in: map[string]any{
+				"series_id": "700009", "title": "榜单剧", "cover": "https://p.test/x.jpg",
+				"episode_cnt": json.Number("84"), "sub_title": "都市·全84集·星硕", "play_cnt": json.Number("8901024"),
+				"vertical": true, "pay_info": map[string]any{},
+			},
+			want: CatalogItem{SeriesID: "700009", Title: "榜单剧", Cover: "https://p.test/x.jpg",
+				EpisodeCount: "84", Status: "完结", PlayCount: "8901024", Vertical: true},
+		},
+		{
+			name: "角标推断连载",
+			in: map[string]any{
+				"series_id": "700010", "series_title": "更新至剧", "episode_right_text": "更新至 40 集",
+			},
+			want: CatalogItem{SeriesID: "700010", Title: "更新至剧", EpisodeCount: "", Status: "连载"},
+		},
+		{
+			name: "热度取 text 兜底",
+			in: map[string]any{
+				"series_id": "700011", "series_title": "x",
+				"hot_score_data": map[string]any{"score": "abc", "text": "4868万热度"},
+			},
+			want: CatalogItem{SeriesID: "700011", Title: "x", Heat: "4868万热度"},
+		},
+		{
+			name: "今日上新",
+			in: map[string]any{
+				"series_id": "700012", "series_title": "x",
+				"sub_title_list": []any{map[string]any{"content": "今日上新", "data_type": 1}},
+			},
+			want: CatalogItem{SeriesID: "700012", Title: "x", OnlineDate: time.Now().In(chinaTimeZone).Format("2006-01-02")},
+		},
+		{
+			name: "feed 包一层 video_data",
+			in: map[string]any{
+				"video_data": map[string]any{"series_id_str": "700013", "series_title": "feed剧", "series_cover": "//p.test/f.jpg"},
+			},
+			want: CatalogItem{SeriesID: "700013", Title: "feed剧", Cover: "https://p.test/f.jpg"},
+		},
+		{
+			name: "category_schema 标签",
+			in: map[string]any{
+				"series_id": "700014", "series_title": "x",
+				"category_schema": `[{"category_id":5022,"name":"都市"},{"category_id":8,"name":"逆袭"}]`,
+			},
+			want: CatalogItem{SeriesID: "700014", Title: "x", Category: "都市", Tags: []string{"都市", "逆袭"}},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			item, ok := catalogItemFromCard(tc.in)
+			if !ok {
+				t.Fatal("card should parse")
+			}
+			if !reflect.DeepEqual(item, tc.want) {
+				t.Fatalf("item = %+v, want %+v", item, tc.want)
+			}
+		})
+	}
+}
+
+func TestCatalogItemFromCardDropsBadID(t *testing.T) {
+	if _, ok := catalogItemFromCard(map[string]any{"series_id": "abc", "series_title": "x"}); ok {
+		t.Fatal("non-numeric id should drop the card")
+	}
+	if _, ok := catalogItemFromCard(map[string]any{"series_id_str": strings.Repeat("9", 33)}); ok {
+		t.Fatal("over-long id should drop the card")
+	}
+}
+
+// ---- 筛选面板枚举 ----
+
+func TestCatalogFiltersFallbackWhenNoPanel(t *testing.T) {
+	var needPanel any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var payload map[string]any
+		json.NewDecoder(r.Body).Decode(&payload)
+		needPanel = payload["need_selector_panel"]
+		json.NewEncoder(w).Encode(catalogLandpageFixture("18", true, "s", catalogCard("700001", "x")))
+	}))
+	defer srv.Close()
+	c := NewClient()
+	c.BaseURL = srv.URL
+	c.HTTP = srv.Client()
+	filters, err := c.CatalogFilters(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if needPanel != true {
+		t.Errorf("need_selector_panel = %v, want true", needPanel)
+	}
+	if filters.Source != "fallback" {
+		t.Errorf("source = %q", filters.Source)
+	}
+	if len(filters.Themes) == 0 || len(filters.Statuses) != 3 || len(filters.OnlineTimes) != 4 {
+		t.Errorf("fallback enums = %+v", filters)
+	}
+	// 状态与时段含明确的空 id（全部/不限）
+	if filters.Statuses[0].ID != "" || filters.OnlineTimes[0].ID != "" {
+		t.Errorf("statuses/online_times = %+v / %+v", filters.Statuses, filters.OnlineTimes)
+	}
+}
+
+func TestCatalogFiltersFromPanel(t *testing.T) {
+	panel := map[string]any{
+		"code": 0,
+		"data": map[string]any{
+			"video_data": []any{catalogCard("700001", "x")},
+			"selector_panel": map[string]any{
+				"rows": []any{
+					map[string]any{
+						"row_name": "题材", "row_key": "category_dim_theme",
+						"options": []any{
+							map[string]any{"selector_item_id": "cate_1051", "show_name": "打脸虐渣"},
+							map[string]any{"selector_item_id": "cate_739", "show_name": "逆袭"},
+						},
+					},
+					map[string]any{
+						"row_name": "上新时段", "row_key": "online_time",
+						"options": []any{
+							map[string]any{"selector_item_id": "today", "show_name": "今日上新"},
+						},
+					},
+				},
+			},
+			"has_more":    false,
+			"next_offset": "18",
+		},
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(panel)
+	}))
+	defer srv.Close()
+	c := NewClient()
+	c.BaseURL = srv.URL
+	c.HTTP = srv.Client()
+	filters, err := c.CatalogFilters(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if filters.Source != "selector_panel" {
+		t.Errorf("source = %q", filters.Source)
+	}
+	if len(filters.Themes) != 2 || filters.Themes[0].Name != "打脸虐渣" || filters.Themes[0].ID != "cate_1051" {
+		t.Errorf("themes = %+v", filters.Themes)
+	}
+	if len(filters.OnlineTimes) == 0 || filters.OnlineTimes[0].Name != "今日上新" {
+		t.Errorf("online_times = %+v", filters.OnlineTimes)
 	}
 }

@@ -434,3 +434,151 @@ func (c *Client) catalogAllPage(ctx context.Context, q CatalogQuery) (*CatalogPa
 		HasMore:   hasMore,
 	}, nil
 }
+
+// ---- 筛选面板枚举（/api/v1/catalog/filters） ----
+
+// CatalogFilterOption 筛选项；ID 供前端匹配（题材=标签名/面板 item id，状态/时段=约定枚举）。
+type CatalogFilterOption struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+// CatalogFilters 浏览页筛选面板三行枚举（题材/连载状态/上新时段）。
+type CatalogFilters struct {
+	Themes      []CatalogFilterOption `json:"themes"`
+	Statuses    []CatalogFilterOption `json:"statuses"`
+	OnlineTimes []CatalogFilterOption `json:"online_times"`
+	Source      string                `json:"source"` // selector_panel | fallback
+}
+
+// fallbackFilters 兜底枚举：面板响应从未被 guoapp 消费、也未在抓包中捕获
+// （guoapp-reference §2.1/§7.2）。题材取 #6 已拍板 mockup 的示例值；
+// 状态/时段是客户端语义（按卡片 status/online_date 过滤），枚举稳定。
+func fallbackFilters() *CatalogFilters {
+	themes := []CatalogFilterOption{}
+	for _, name := range []string{"都市", "甜宠", "逆袭", "重生", "穿越", "复仇", "战神", "古装"} {
+		themes = append(themes, CatalogFilterOption{ID: name, Name: name})
+	}
+	return &CatalogFilters{
+		Themes: themes,
+		Statuses: []CatalogFilterOption{
+			{ID: "", Name: "全部"}, {ID: "ongoing", Name: "连载中"}, {ID: "finished", Name: "已完结"},
+		},
+		OnlineTimes: []CatalogFilterOption{
+			{ID: "", Name: "不限"}, {ID: "today", Name: "今日上新"}, {ID: "week", Name: "本周"}, {ID: "month", Name: "本月"},
+		},
+		Source: "fallback",
+	}
+}
+
+// CatalogFilters 拉取筛选面板枚举：need_selector_panel=true 探测一次（进程内缓存 10 分钟），
+// 拿不到可用面板时返回兜底枚举（Source=fallback），不报错。
+func (c *Client) CatalogFilters(ctx context.Context) (*CatalogFilters, error) {
+	c.filtersMu.Lock()
+	cached := c.filters
+	c.filtersMu.Unlock()
+	if cached != nil && time.Now().Before(c.filtersExpires) {
+		return cached, nil
+	}
+	payload := catalogLandpagePayload(CatalogGenreShortPlay, 0, "")
+	payload["need_selector_panel"] = true
+	result, err := c.appRequest(ctx, "POST", "/reading/distribution/category/landpage/v/", nil, payload, false)
+	var filters *CatalogFilters
+	if err == nil {
+		filters = filtersFromPanel(result)
+	}
+	if filters == nil {
+		filters = fallbackFilters()
+	}
+	c.filtersMu.Lock()
+	c.filters, c.filtersExpires = filters, time.Now().Add(10*time.Minute)
+	c.filtersMu.Unlock()
+	return filters, nil
+}
+
+// filtersFromPanel 从面板响应提取枚举。landpage 面板结构未抓包证实，此处按
+// 同族筛选 schema（榜单 cell_selector.panel_selector，guoapp-reference §5.5/§2.1）
+// 宽容解析：data 下找 selector_panel/panel_selector/cell_selector，行分组带
+// row_key/row_name，选项 selector_item_id/show_name。行与三个维度的对应按
+// row_key（category_dim_theme/creation_status/online_time）或 row_name 关键词匹配。
+func filtersFromPanel(result map[string]any) *CatalogFilters {
+	data := nestedMap(result, "data")
+	for _, key := range []string{"selector_panel", "panel_selector", "cell_selector"} {
+		panel, ok := data[key].(map[string]any)
+		if !ok {
+			continue
+		}
+		filters := &CatalogFilters{Source: "selector_panel"}
+		for _, row := range panelRows(panel) {
+			options := panelRowOptions(row)
+			if len(options) == 0 {
+				continue
+			}
+			rowKey := mapString(row, "row_key", "key", "type")
+			rowName := mapString(row, "row_name", "name")
+			switch {
+			case strings.Contains(rowKey, "theme") || strings.Contains(rowName, "题材") || strings.Contains(rowName, "主题"):
+				filters.Themes = options
+			case strings.Contains(rowKey, "creation_status") || strings.Contains(rowName, "连载") || strings.Contains(rowName, "状态"):
+				filters.Statuses = options
+			case strings.Contains(rowKey, "online_time") || strings.Contains(rowName, "上新") || strings.Contains(rowName, "时段"):
+				filters.OnlineTimes = options
+			}
+		}
+		if len(filters.Themes)+len(filters.Statuses)+len(filters.OnlineTimes) > 0 {
+			return filters
+		}
+	}
+	return nil
+}
+
+// panelRows 行分组可能在 rows/inner_rows/list 或 panel 本身即行数组。
+func panelRows(panel map[string]any) []map[string]any {
+	for _, key := range []string{"rows", "inner_rows", "list", "items"} {
+		if rows := mapList(panel[key]); len(rows) > 0 {
+			return rows
+		}
+	}
+	if rows := mapList(panel); rows != nil {
+		return rows
+	}
+	return nil
+}
+
+func panelRowOptions(row map[string]any) []CatalogFilterOption {
+	for _, key := range []string{"options", "selector_items", "items", "sub_rows"} {
+		list := mapList(row[key])
+		if len(list) == 0 {
+			continue
+		}
+		var options []CatalogFilterOption
+		for _, item := range list {
+			name := mapString(item, "show_name", "name", "title")
+			if name == "" {
+				continue
+			}
+			options = append(options, CatalogFilterOption{
+				ID:   firstNonEmpty(mapString(item, "selector_item_id", "id", "item_id"), name),
+				Name: name,
+			})
+		}
+		if len(options) > 0 {
+			return options
+		}
+	}
+	return nil
+}
+
+func mapList(v any) []map[string]any {
+	rows, _ := v.([]any)
+	if len(rows) == 0 {
+		return nil
+	}
+	list := make([]map[string]any, 0, len(rows))
+	for _, row := range rows {
+		if m, ok := row.(map[string]any); ok {
+			list = append(list, m)
+		}
+	}
+	return list
+}

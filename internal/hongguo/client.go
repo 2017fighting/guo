@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -29,6 +30,10 @@ type Client struct {
 
 	deviceID  string
 	installID string
+
+	filtersMu      sync.Mutex // 筛选面板枚举缓存（CatalogFilters）
+	filters        *CatalogFilters
+	filtersExpires time.Time
 }
 
 // NewClient 创建客户端，设备身份进程内固定。
