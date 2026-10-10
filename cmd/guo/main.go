@@ -75,6 +75,12 @@ func main() {
 		}
 		engine.Concurrency = n
 	}
+	// 热读取接缝：每次领取任务/导出分集前重读 settings 表（表值优先，
+	// 环境变量兑底——与启动口径一致），设置页保存后无需重启进程。
+	engine.SettingsLookup = func() pipeline.HotSettings {
+		s := server.LoadSettings(st)
+		return pipeline.HotSettings{Concurrency: s.Concurrency, ASSExport: s.AssExport}
+	}
 
 	ctx := context.Background()
 	cmd, args := os.Args[1], os.Args[2:]
@@ -143,7 +149,7 @@ func main() {
 			static = os.DirFS("web/dist")
 		}
 		addr := env("GUO_ADDR", ":8080")
-		srv := &server.Server{Catalog: source, Static: static}
+		srv := &server.Server{Catalog: source, Static: static, Settings: st}
 		fmt.Fprintf(os.Stderr, "[guo] HTTP 服务已启动 %s（API /api/v1）\n", addr)
 		must(http.ListenAndServe(addr, srv.Handler()))
 	default:
