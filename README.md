@@ -46,6 +46,7 @@ docker compose up -d
 ### 说明
 
 - **国内直连**：访问红果源站为直连（无代理转发，v1 未实现；设置页已留出站代理配置位）。拉取 ghcr 镜像慢时可配 Docker 镜像代理，或改用 `build: .` 本地自构建。
+- **绑定挂载权限**：镜像内进程非 root（uid 100）。若把 `/data/*` 改绑主机目录，需保证该目录可被 uid 100 写，或给 guo 服务加 `user: "$(id -u):$(id -g)"`；默认命名卷无此问题。
 - **更新镜像**：`docker compose pull && docker compose up -d`（数据都在卷里，任务与媒体不丢）。
 - **自构建**：compose 里注释 `image:`、解开 `build: .`；多阶段构建（node 构建前端 → CGO_ENABLED=0 静态编译 → alpine + ffmpeg 运行层），前端产物 embed 进单二进制，镜像内已含 ffmpeg。
 
