@@ -1,4 +1,4 @@
-// 设置页：弹幕字幕导出开关 / 下载并发 / Jellyfin 联动（保存时验活）/
+// 设置页：弹幕导出开关 / 下载并发 / Jellyfin 联动（保存时验活）/
 // 出站代理（预留，只存不生效）。无 mockup——按 ui-contract 令牌的最小表单。
 // 对接 GET/PUT /api/v1/settings；保存失败展示后端人话 message+hint。
 
@@ -106,21 +106,21 @@ export function SettingsPage() {
         </p>
       </header>
 
-      {/* 弹幕字幕导出 */}
+      {/* 弹幕导出 */}
       <Card>
         <CardHeader>
-          <CardTitle>弹幕字幕导出</CardTitle>
+          <CardTitle>弹幕导出</CardTitle>
           <CardDescription>
             下载完成时把弹幕转成 ASS 字幕（与视频同名，Jellyfin 可直接加载）。
           </CardDescription>
         </CardHeader>
         <CardContent>
           <label className="flex items-center justify-between gap-4">
-            <span className="text-sm">导出弹幕字幕</span>
+            <span className="text-sm">导出弹幕</span>
             <Switch
               checked={form.ass_export}
               onCheckedChange={(v) => setForm({ ...form, ass_export: v })}
-              aria-label="弹幕字幕导出开关"
+              aria-label="弹幕导出开关"
             />
           </label>
         </CardContent>

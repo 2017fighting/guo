@@ -187,7 +187,7 @@ function JobCard({ job, onDelete }: { job: DownloadJob; onDelete: () => void }) 
               <Badge variant="outline" className="gap-1">
                 <CheckCircle2 className="size-3" aria-hidden />
                 已完成 · {job.done_episodes}/{job.total_episodes} 集
-                {job.jellyfin_refreshed && ' · Jellyfin 已刷新'}
+                {job.jellyfin_refreshed && ' · Jellyfin 库已刷新'}
               </Badge>
             )}
             {job.status === 'failed' && (

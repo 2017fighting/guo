@@ -158,7 +158,7 @@ func (s *Server) handleSettingsPut(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.AssExport == nil {
 		writeError(w, http.StatusBadRequest, "设置保存失败：缺少 ass_export 字段",
-			"弹幕字幕导出开关是必填项，true 或 false")
+			"弹幕导出开关是必填项，true 或 false")
 		return
 	}
 	if req.Concurrency == nil {

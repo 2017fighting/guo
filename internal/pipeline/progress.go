@@ -26,7 +26,7 @@ type LiveInfo struct {
 type progressTracker struct {
 	mu     sync.Mutex
 	live   map[int64]LiveInfo
-	jfDone map[int64]bool // Jellyfin 已刷新（按任务；进程内记忆，重启即失）
+	jfDone map[int64]bool // Jellyfin 库已刷新（按任务；进程内记忆，重启即失）
 }
 
 func (p *progressTracker) setLive(info LiveInfo) {
