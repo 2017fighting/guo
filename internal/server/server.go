@@ -29,6 +29,8 @@ type RankingsSource interface {
 type Server struct {
 	Catalog   CatalogSource
 	Drama     DramaSource         // 详情+分集（#11）
+	Streams   StreamSource        // 播放取流（#13）
+	Danmaku   DanmakuSource       // 弹幕窗口（#13）
 	Downloads *pipeline.JobRunner // 下载队列（引擎+常驻执行器，#11）
 	Events    *EventHub           // SSE 队列事件（cmd serve 接线，#11）
 	Rankings  RankingsSource      // 8 榜单（#14）

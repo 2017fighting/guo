@@ -11,6 +11,9 @@ func (s *Server) routes(mux *http.ServeMux) {
 
 	// 详情与下载队列（#11）
 	mux.HandleFunc("GET /api/v1/drama/{seriesID}", s.handleDrama)
+	mux.HandleFunc("GET /api/v1/drama/{seriesID}/episodes/{vid}/stream", s.handleEpisodeStream)
+	mux.HandleFunc("GET /api/v1/drama/{seriesID}/episodes/{vid}/danmaku", s.handleDanmaku)
+	mux.HandleFunc("GET /api/v1/stream/{seriesID}/{vid}", s.handleStreamProxy)
 	mux.HandleFunc("GET /api/v1/downloads", s.handleDownloadsList)
 	mux.HandleFunc("POST /api/v1/downloads", s.handleDownloadsCreate)
 	mux.HandleFunc("GET /api/v1/downloads/{jobID}/episodes", s.handleDownloadEpisodes)

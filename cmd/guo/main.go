@@ -159,6 +159,7 @@ func main() {
 		runner := pipeline.NewJobRunner(engine)
 		srv := &server.Server{
 			Catalog: source, Drama: source, Downloads: runner,
+			Streams: source, Danmaku: source,
 			Rankings: rankings.NewCache(rankings.NewClient(), st), Search: source,
 			Settings: st, Static: static,
 		}
