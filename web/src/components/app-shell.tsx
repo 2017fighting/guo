@@ -1,12 +1,13 @@
 // 应用外壳：顶部导航（浏览/排行榜/下载队列 + 搜索入口 + 主题切换）与
 // 移动端底部 Tab。排行榜/下载/搜索页在后续工单接入路由时转正。
 
-import { Clapperboard, Download, LayoutGrid, Moon, Search, Sun } from 'lucide-react'
+import { Clapperboard, Download, LayoutGrid, Moon, Search, Settings, Sun } from 'lucide-react'
 import type { ReactNode } from 'react'
+import { Link } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { useTheme } from '@/components/theme-provider'
 
-export type NavKey = 'browse' | 'rankings' | 'downloads' | 'search'
+export type NavKey = 'browse' | 'rankings' | 'downloads' | 'search' | 'settings'
 
 interface NavItemSpec {
   key: NavKey
@@ -83,6 +84,17 @@ export function AppShell({ active, children }: { active: NavKey; children: React
             onClick={toggle}
           >
             {theme === 'dark' ? <Sun aria-hidden /> : <Moon aria-hidden />}
+          </Button>
+          <Button
+            variant={active === 'settings' ? 'default' : 'outline'}
+            size="icon"
+            aria-label="设置"
+            aria-current={active === 'settings' ? 'page' : undefined}
+            asChild
+          >
+            <Link to="/settings">
+              <Settings aria-hidden />
+            </Link>
           </Button>
         </div>
       </header>
