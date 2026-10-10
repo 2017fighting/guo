@@ -57,6 +57,15 @@ func (c *Client) ResolveStream(ctx context.Context, seriesID, vid string, qualit
 // ---- App API 取流（video_model） ----
 
 func (c *Client) resolveAppStream(ctx context.Context, vid string) (*pipeline.Stream, error) {
+	model, err := c.appModel(ctx, vid)
+	if err != nil {
+		return nil, err
+	}
+	return selectAppStream(model, vid)
+}
+
+// appModel 发起 video_model 请求并解出 video_model 映射。
+func (c *Client) appModel(ctx context.Context, vid string) (map[string]any, error) {
 	payload := map[string]any{
 		"video_id": vid, "content_type": 1,
 		"biz_param": map[string]any{"need_all_video_definition": true, "video_platform": 3},
@@ -74,17 +83,38 @@ func (c *Client) resolveAppStream(ctx context.Context, vid string) (*pipeline.St
 			return nil, errors.New("红果 App 播放信息格式异常")
 		}
 	}
-	return selectAppStream(model, vid)
+	return model, nil
 }
 
 type scoredStream struct {
-	stream pipeline.Stream
-	score  int
+	stream     pipeline.Stream
+	score      int
+	height     int // 打分用高度（definition 优先），画质档枚举/选档用
+	metaWidth  int // video_meta 原始宽（竖屏判定用）
+	metaHeight int // video_meta 原始高
+}
+
+func (s scoredStream) portrait() bool {
+	return s.metaWidth > 0 && s.metaHeight > 0 && s.metaHeight > s.metaWidth
 }
 
 // selectAppStream 按画质打分选最优档：height*10，h264/avc1 +1，
 // bytevc1/2 降权 -100000（不硬 ban，留作最后尝试——v11 策略）。
 func selectAppStream(model map[string]any, vid string) (*pipeline.Stream, error) {
+	choices, keyErr := appStreamChoices(model, vid)
+	pick := pickAppChoice(choices, 0)
+	if pick != nil {
+		fresh := pick.stream
+		return &fresh, nil
+	}
+	if keyErr != nil {
+		return nil, fmt.Errorf("红果 App 媒体密钥不可用: %w", keyErr)
+	}
+	return nil, errors.New("红果 App 未返回可用媒体档位")
+}
+
+// appStreamChoices 展开全部地址候选（含各画质档）并按分数降序排序。
+func appStreamChoices(model map[string]any, vid string) ([]scoredStream, error) {
 	variants := anyList(model["video_list"])
 	if rows, ok := model["video_list"].(map[string]any); ok && len(variants) == 0 {
 		keys := make([]string, 0, len(rows))
@@ -123,10 +153,12 @@ func selectAppStream(model map[string]any, vid string) (*pipeline.Stream, error)
 			stream.CENCKeyHex = hex.EncodeToString(key)
 		}
 		height, _ := strconv.Atoi(mapString(meta, "vheight"))
+		metaWidth, _ := strconv.Atoi(mapString(meta, "vwidth"))
+		metaHeight := height
 		if definition, err := strconv.Atoi(qualityNumber.FindString(mapString(meta, "definition"))); err == nil && definition > 0 {
 			height = definition
-		} else if width, _ := strconv.Atoi(mapString(meta, "vwidth")); width > 0 && (height == 0 || width < height) {
-			height = width
+		} else if metaWidth > 0 && (height == 0 || metaWidth < height) {
+			height = metaWidth
 		}
 		stream.Quality = height
 		stream.Definition = mapString(meta, "definition")
@@ -141,18 +173,31 @@ func selectAppStream(model map[string]any, vid string) (*pipeline.Stream, error)
 		for _, address := range addresses {
 			s := stream
 			s.URL = address
-			choices = append(choices, scoredStream{stream: s, score: score})
+			choices = append(choices, scoredStream{stream: s, score: score, height: height,
+				metaWidth: metaWidth, metaHeight: metaHeight})
 		}
 	}
-	if len(choices) > 0 {
-		sort.SliceStable(choices, func(i, j int) bool { return choices[i].score > choices[j].score })
-		best := choices[0].stream
-		return &best, nil
+	sort.SliceStable(choices, func(i, j int) bool { return choices[i].score > choices[j].score })
+	return choices, keyErr
+}
+
+// pickAppChoice 在候选里选档：quality>0 时先限同档位取最高分，取不到回落全场最优。
+func pickAppChoice(choices []scoredStream, quality int) *scoredStream {
+	if len(choices) == 0 {
+		return nil
 	}
-	if keyErr != nil {
-		return nil, fmt.Errorf("红果 App 媒体密钥不可用: %w", keyErr)
+	if quality > 0 {
+		best := -1
+		for i := range choices {
+			if choices[i].height == quality && (best < 0 || choices[i].score > choices[best].score) {
+				best = i
+			}
+		}
+		if best >= 0 {
+			return &choices[best]
+		}
 	}
-	return nil, errors.New("红果 App 未返回可用媒体档位")
+	return &choices[0] // 候选已按分数降序
 }
 
 // mediaAddresses 提取地址族（明文 URL 或 base64 编码 URL），按键序尝试。
@@ -216,6 +261,16 @@ type playbackResponse struct {
 }
 
 func (c *Client) resolveFallbackStream(ctx context.Context, seriesID, vid string) (*pipeline.Stream, error) {
+	candidates, err := c.fallbackCandidates(ctx, seriesID, vid)
+	if err != nil {
+		return nil, err
+	}
+	fresh := *candidates[0]
+	return &fresh, nil
+}
+
+// fallbackCandidates 拉兜底 API 并展开可用候选（按画质降序，稳定序）。
+func (c *Client) fallbackCandidates(ctx context.Context, seriesID, vid string) ([]*pipeline.Stream, error) {
 	reference, err := json.Marshal(playbackReference{ContentType: 1004, SeriesID: seriesID, VideoID: vid, VideoPlatform: 3})
 	if err != nil {
 		return nil, err
@@ -255,8 +310,16 @@ func (c *Client) resolveFallbackStream(ctx context.Context, seriesID, vid string
 			return nil, errors.New("红果兜底播放接口没有返回直接媒体地址")
 		}
 	}
-	var best *pipeline.Stream
-	bestQuality := -1
+	candidates, cerr := fallbackStreams(response)
+	if cerr != nil {
+		return nil, cerr
+	}
+	return candidates, nil
+}
+
+// fallbackStreams 从响应提取可用候选，按画质降序稳定排序；全部不可用时带回失败原因。
+func fallbackStreams(response playbackResponse) ([]*pipeline.Stream, error) {
+	var candidates []*pipeline.Stream
 	var keyErr error
 	for _, option := range response.KeyURLs {
 		mediaURL := strings.TrimSpace(option.URL)
@@ -274,21 +337,34 @@ func (c *Client) resolveFallbackStream(ctx context.Context, seriesID, vid string
 			continue
 		}
 		quality, _ := strconv.Atoi(qualityNumber.FindString(option.Name))
-		if best == nil || quality > bestQuality {
-			best = &pipeline.Stream{
-				URL: mediaURL, Referer: "", CENCKeyHex: hex.EncodeToString(key),
-				Quality: quality, Definition: qualityNumber.FindString(option.Name),
+		candidates = append(candidates, &pipeline.Stream{
+			URL: mediaURL, Referer: "", CENCKeyHex: hex.EncodeToString(key),
+			Quality: quality, Definition: qualityNumber.FindString(option.Name),
+		})
+	}
+	if len(candidates) == 0 {
+		if keyErr != nil {
+			return nil, keyErr
+		}
+		return nil, errors.New("红果兜底播放接口未返回该集可用的媒体和密钥")
+	}
+	sort.SliceStable(candidates, func(i, j int) bool { return candidates[i].Quality > candidates[j].Quality })
+	return candidates, nil
+}
+
+// pickFallbackStream 兜底线路选档：quality>0 时取同档，取不到回落最高档。
+func pickFallbackStream(candidates []*pipeline.Stream, quality int) *pipeline.Stream {
+	if len(candidates) == 0 {
+		return nil
+	}
+	if quality > 0 {
+		for _, cand := range candidates {
+			if cand.Quality == quality {
+				return cand
 			}
-			bestQuality = quality
 		}
 	}
-	if best != nil {
-		return best, nil
-	}
-	if keyErr != nil {
-		return nil, keyErr
-	}
-	return nil, errors.New("红果兜底播放接口未返回该集可用的媒体和密钥")
+	return candidates[0]
 }
 
 // decodePlaybackResponse 解开 `v2.<hex>.<base64>` 加密信封（AES-128-CBC + PKCS7）。
