@@ -4,6 +4,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { LoaderCircle } from 'lucide-react'
 import { api, ApiError } from '@/lib/api'
+import { dedupBy } from '@/lib/utils'
 import { RankPosterWall } from '@/components/rank-poster-card'
 import { PosterWallSkeleton } from '@/components/poster-wall'
 import { Button } from '@/components/ui/button'
@@ -52,7 +53,7 @@ export function RankingsPage() {
         setFeed((prev) => {
           const base = offset === 0 ? [] : prev.items
           return {
-            items: dedup([...base, ...page.items]),
+            items: dedupBy([...base, ...page.items], (it) => it.series_id),
             offset: page.offset,
             sessionId: page.session_id,
             hasMore: page.has_more,
@@ -172,15 +173,4 @@ export function RankingsPage() {
       )}
     </div>
   )
-}
-
-function dedup(items: readonly RankingItem[]): RankingItem[] {
-  const seen = new Set<string>()
-  const out: RankingItem[] = []
-  for (const item of items) {
-    if (seen.has(item.series_id)) continue
-    seen.add(item.series_id)
-    out.push(item)
-  }
-  return out
 }
