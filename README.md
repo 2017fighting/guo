@@ -36,6 +36,7 @@ docker compose up -d
 | `GUO_JELLYFIN_URL` | 未设 | Jellyfin 地址（如 `http://jellyfin:8096`；不联动则不设） |
 | `GUO_JELLYFIN_KEY` | 未设 | Jellyfin API Key（控制台 → API Keys 创建） |
 | `GUO_FFMPEG` | `ffmpeg` | ffmpeg 路径（镜像内已含，一般无需设） |
+| `GUO_PROXY_URL` | 未设 | 出站代理地址（预留：仅存储展示，本版本不生效） |
 
 | 卷 | 用途 |
 | --- | --- |

@@ -2,8 +2,8 @@ package server
 
 // 设置资源：GET/PUT /api/v1/settings（spec §4）。
 // 字段落 SQLite settings 表（snake_case 键）；读取口径：表值优先，
-// 环境变量兜底（GUO_ASS_EXPORT / GUO_CONCURRENCY / GUO_JELLYFIN_URL，
-// 与 CLI 启动口径一致）；api_key 永不回显。
+// 环境变量兜底（GUO_ASS_EXPORT / GUO_CONCURRENCY / GUO_JELLYFIN_URL /
+// GUO_PROXY_URL，与 CLI 启动口径一致）；api_key 永不回显。
 
 import (
 	"context"
@@ -73,6 +73,9 @@ func LoadSettings(st SettingsStore) Settings {
 		Concurrency: envConcurrency(),
 	}
 	s.Jellyfin.URL = os.Getenv("GUO_JELLYFIN_URL")
+	// 预留位（spec §3 出站代理不做于本规格）：GUO_PROXY_URL 环境兑底；
+	// proxy_enabled 仅认表值且 PUT 恒按关闭落库，无环境变量口径。
+	s.Proxy.ProxyURL = os.Getenv("GUO_PROXY_URL")
 	if v, err := st.Setting(settingKeyASSExport); err == nil {
 		s.AssExport = v == "1" || v == "true" // 与 cmd/guo assExportSetting 同口径
 	}

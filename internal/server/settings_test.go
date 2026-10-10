@@ -39,6 +39,7 @@ func clearSettingEnv(t *testing.T) {
 	t.Setenv("GUO_ASS_EXPORT", "")
 	t.Setenv("GUO_CONCURRENCY", "")
 	t.Setenv("GUO_JELLYFIN_URL", "")
+	t.Setenv("GUO_PROXY_URL", "")
 }
 
 func mustSetting(t *testing.T, st *store.Store, key, value string) {
@@ -83,6 +84,7 @@ func TestSettingsGetEnvFallback(t *testing.T) {
 	t.Setenv("GUO_ASS_EXPORT", "0")
 	t.Setenv("GUO_CONCURRENCY", "4")
 	t.Setenv("GUO_JELLYFIN_URL", "http://env-jf:8096")
+	t.Setenv("GUO_PROXY_URL", "http://env-proxy:7890")
 	ts, _ := newSettingsTestServer(t)
 
 	resp, err := http.Get(ts.URL + "/api/v1/settings")
@@ -100,6 +102,14 @@ func TestSettingsGetEnvFallback(t *testing.T) {
 	jf, _ := body["jellyfin"].(map[string]any)
 	if jf["url"] != "http://env-jf:8096" {
 		t.Errorf("GUO_JELLYFIN_URL 应兜底: %v", jf)
+	}
+	// 预留位：GUO_PROXY_URL 环境兜底，proxy_enabled 恒关（仅认表值）。
+	proxy, _ := body["proxy"].(map[string]any)
+	if proxy["proxy_url"] != "http://env-proxy:7890" {
+		t.Errorf("GUO_PROXY_URL 应兜底: %v", proxy)
+	}
+	if proxy["proxy_enabled"] != false {
+		t.Errorf("proxy_enabled 应恒关: %v", proxy)
 	}
 }
 
