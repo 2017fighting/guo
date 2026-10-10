@@ -112,6 +112,13 @@ CREATE TABLE IF NOT EXISTS episode_meta (
 CREATE TABLE IF NOT EXISTS settings (
   key   TEXT PRIMARY KEY,
   value TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS rankings_cache (
+  list       TEXT NOT NULL,
+  offset     INTEGER NOT NULL,
+  payload    TEXT NOT NULL,
+  updated_at INTEGER NOT NULL,
+  PRIMARY KEY(list, offset)
 );`)
 	return err
 }
@@ -316,4 +323,28 @@ func (s *Store) SetSetting(key, value string) error {
 func (s *Store) DeleteJob(dramaID string) error {
 	_, err := s.db.Exec(`DELETE FROM jobs WHERE drama_id=?`, dramaID)
 	return err
+}
+
+// ---- 榜单缓存（rankings_cache，spec §5：磁盘当日 stale 兜底） ----
+
+// SaveRankingsCache 覆盖写入一条榜单页缓存（(list, offset) 主键）。
+func (s *Store) SaveRankingsCache(list string, offset int, payload string, updatedAt int64) error {
+	_, err := s.db.Exec(`INSERT INTO rankings_cache(list,offset,payload,updated_at) VALUES(?,?,?,?)
+		ON CONFLICT(list, offset) DO UPDATE SET payload=excluded.payload, updated_at=excluded.updated_at`,
+		list, offset, payload, updatedAt)
+	return err
+}
+
+// RankingsCache 读回榜单页缓存；缺行返回 ErrNotFound。
+func (s *Store) RankingsCache(list string, offset int) (string, int64, error) {
+	row := s.db.QueryRow(`SELECT payload, updated_at FROM rankings_cache WHERE list=? AND offset=?`, list, offset)
+	var payload string
+	var updatedAt int64
+	if err := row.Scan(&payload, &updatedAt); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return "", 0, ErrNotFound
+		}
+		return "", 0, err
+	}
+	return payload, updatedAt, nil
 }
