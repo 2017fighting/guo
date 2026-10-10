@@ -7,4 +7,5 @@ import "net/http"
 func (s *Server) routes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/catalog", s.handleCatalog)
 	mux.HandleFunc("GET /api/v1/catalog/filters", s.handleCatalogFilters)
+	mux.HandleFunc("GET /api/v1/rankings", s.handleRankings)
 }

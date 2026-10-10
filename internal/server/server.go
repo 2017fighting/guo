@@ -9,6 +9,7 @@ import (
 	"net/http"
 
 	"github.com/2017fighting/guo/internal/hongguo"
+	"github.com/2017fighting/guo/internal/hongguo/rankings"
 )
 
 // CatalogSource 目录数据源（*hongguo.Client 实现；接口让 handler 可测）。
@@ -17,11 +18,17 @@ type CatalogSource interface {
 	CatalogFilters(ctx context.Context) (*hongguo.CatalogFilters, error)
 }
 
+// RankingsSource 榜单数据源（*rankings.Cache 实现；接口让 handler 可测）。
+type RankingsSource interface {
+	Page(ctx context.Context, list string, offset int, cursor string) (*rankings.Page, error)
+}
+
 // Server HTTP 入口。Static 为前端产物根（含 index.html，web/dist），
 // embed 接线在容器化工单完成；nil 表示仅 API。
 type Server struct {
-	Catalog CatalogSource
-	Static  fs.FS
+	Catalog  CatalogSource
+	Rankings RankingsSource
+	Static   fs.FS
 }
 
 // Handler 返回完整路由（API + 静态回落）。
