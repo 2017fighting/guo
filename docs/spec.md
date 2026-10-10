@@ -36,7 +36,7 @@ web/               新增：React 前端
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
-| GET | /catalog | 目录 feed：genre（all/short_play/comic_series/ai_series）+ 游标（offset/session_id，18 条/页）+ 客户端排序过滤（同 guoapp 语义：热度/上线/播放量/名称/季号 + 完结状态） |
+| GET | /catalog | 目录 feed：genre（all/short_play/comic_series/ai_series）+ 游标（offset/session_id，18 条/页）+ 客户端排序过滤（同 guoapp 语义：热度/上线/播放量/名称/季号 + 完结状态）；genre=all 为三分类并发聚合，单页最多 54 条（3×18），游标各自推进 |
 | GET | /catalog/filters | 筛选面板枚举（题材/状态/上新时段；来自 need_selector_panel 或抓包枚举） |
 | GET | /rankings?list=&offset= | 8 榜单（见 §10）；游标分页；响应含更新时间 |
 | GET | /search?q= | 官网搜索页 + 名称索引双通道合并（server 端 300ms 防抖由前端做） |
@@ -44,7 +44,7 @@ web/               新增：React 前端
 | GET | /drama/{seriesID} | 详情+分集（App→Web 回落） |
 | GET | /drama/{seriesID}/episodes/{vid}/stream | 取流三级回退（Web→App→兜底），返回代理播放地址 + 画质档 + 时长 + 画面方向 |
 | GET | /stream/* | 媒体流代理（Range 转发、Referer 策略、403/410 自动重取换址——复用 pipeline 下载逻辑） |
-| GET | /drama/{seriesID}/episodes/{vid}/danmaku?from= | 弹幕窗口（30s 窗口游标，前端边播边拉） |
+| GET | /drama/{seriesID}/episodes/{vid}/danmaku?from=&duration= | 弹幕窗口（30s 窗口游标，前端边播边拉；duration=集时长 ms，窗口语义需要，服务端用于尾窗判断） |
 | POST | /downloads | 建任务 {seriesID, quality, episodes[]}（幂等；done 任务补集自动重入队） |
 | GET | /downloads | 队列列表（剧卡片聚合：状态/进度/速度/当前分集） |
 | GET | /downloads/{jobID}/episodes | 分集明细 |
@@ -72,7 +72,7 @@ web/               新增：React 前端
 
 1. **浏览**：类型 Tabs（4）→ 排序下拉 → 可展开筛选；海报墙（2:3 卡：标题/集数/状态/热度，VIP 角标）；无限加载+底部兜底
 2. **搜索**：联想下拉 + 最近搜索 chips + 结果海报墙
-3. **详情**：资料卡 + 可展开简介；主行动「立即播放」；下载弹层（画质 3 档默认最高 + 分集多选分组 + 体积预估）
+3. **详情**：资料卡 + 可展开简介；主行动「立即播放」；下载弹层（画质 3 档默认最高 + 分集多选分组 + 体积预估——源站详情接口无分集体积字段，降级为仅显示分集数/画质档，后续源站若暴露体积字段再启用）
 4. **播放**：画面比例自适应（16:9 主形态/9:16 竖屏窄栏）；控制条含弹幕开关/画质/线路/下一集；键盘上下切集；弹幕 Canvas 叠加（样式对齐 ASS 导出口径）
 5. **下载队列**：任务=剧卡片三态（下载中/完成/失败含原因出路）；确定值进度+分集明细折叠（✓/↓/数字）；暂停/继续/重试/更新本剧/删除确认（保留视频可选）
 6. **排行榜**（新增，模式同浏览页）：横向 8 榜 Tab；条目=海报卡+rank 序号角标；数据更新时间标注
