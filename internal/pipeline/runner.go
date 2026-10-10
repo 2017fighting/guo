@@ -219,3 +219,12 @@ func (r *JobRunner) DeleteJob(dramaID string, keepVideo bool) error {
 func (r *JobRunner) Job(jobID int64) (*store.Job, error) {
 	return r.engine.jobByID(jobID)
 }
+
+// ---- server 聚合用的引擎透传（卡片=持久状态+实时进度） ----
+
+func (r *JobRunner) Store() *store.Store                  { return r.engine.Store }
+func (r *JobRunner) LiveJob(jobID int64) (LiveInfo, bool) { return r.engine.LiveJob(jobID) }
+func (r *JobRunner) JellyfinRefreshed(jobID int64) bool   { return r.engine.JellyfinRefreshed(jobID) }
+func (r *JobRunner) JobBytes(job *store.Job) (downloaded, estimated int64) {
+	return r.engine.JobBytes(job)
+}
