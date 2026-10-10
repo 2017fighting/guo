@@ -1,7 +1,7 @@
 // 应用外壳：顶部导航（浏览/排行榜/下载队列 + 搜索入口 + 主题切换）与
-// 移动端底部 Tab。排行榜/下载页在后续工单接入路由时转正。
+// 移动端底部 Tab。下载页在后续工单接入路由时转正。
 
-import { Clapperboard, Download, LayoutGrid, Moon, Search, Settings, Sun } from 'lucide-react'
+import { Clapperboard, Download, LayoutGrid, Moon, Search, Settings, Sun, Trophy } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
@@ -17,7 +17,7 @@ interface NavItemSpec {
 
 const NAV_ITEMS: NavItemSpec[] = [
   { key: 'browse', label: '浏览', ready: true },
-  { key: 'rankings', label: '排行榜', ready: false },
+  { key: 'rankings', label: '排行榜', ready: true },
   { key: 'downloads', label: '下载队列', ready: false },
 ]
 
@@ -25,6 +25,7 @@ const TABBAR_ITEMS: NavItemSpec[] = [
   { key: 'browse', label: '浏览', ready: true },
   { key: 'search', label: '搜索', ready: true },
   { key: 'downloads', label: '下载', ready: false },
+  { key: 'rankings', label: '排行榜', ready: true },
 ]
 
 /** 已上线页面的导航目标；后续 lane 在此各加一行。 */
@@ -110,7 +111,14 @@ export function AppShell({ active, children }: { active: NavKey; children: React
       >
         {TABBAR_ITEMS.map((spec) => {
           const activeTab = spec.key === active
-          const Icon = spec.key === 'search' ? Search : spec.key === 'downloads' ? Download : LayoutGrid
+          const Icon =
+            spec.key === 'search'
+              ? Search
+              : spec.key === 'downloads'
+                ? Download
+                : spec.key === 'rankings'
+                  ? Trophy
+                  : LayoutGrid
           const className = `flex min-h-14 flex-1 flex-col items-center justify-center gap-0.5 text-xs ${
             activeTab ? 'font-medium text-foreground' : 'text-muted-foreground'
           } ${spec.ready ? '' : 'opacity-60'}`
