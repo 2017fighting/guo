@@ -1,15 +1,32 @@
 // 海报墙：响应式栅格（2/3/5/6 列，对齐 mockups/browse.html poster-grid）。
+// hrefFor 提供时每张卡包一层路由 Link（搜索/榜单结果进详情页用）。
 
+import { Link } from 'react-router-dom'
 import { PosterCard } from '@/components/poster-card'
 import { Skeleton } from '@/components/ui/skeleton'
 import type { CatalogItem } from '@/types/catalog'
 
-export function PosterWall({ items }: { items: readonly CatalogItem[] }) {
+interface PosterWallProps {
+  items: readonly CatalogItem[]
+  hrefFor?: (item: CatalogItem) => string
+}
+
+export function PosterWall({ items, hrefFor }: PosterWallProps) {
   return (
     <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-5 xl:grid-cols-6">
-      {items.map((item) => (
-        <PosterCard key={item.series_id} item={item} />
-      ))}
+      {items.map((item) =>
+        hrefFor ? (
+          <Link
+            key={item.series_id}
+            to={hrefFor(item)}
+            className="block rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <PosterCard item={item} />
+          </Link>
+        ) : (
+          <PosterCard key={item.series_id} item={item} />
+        ),
+      )}
     </div>
   )
 }
