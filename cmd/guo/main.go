@@ -5,14 +5,18 @@
 //	guo list                       列任务与分集状态
 //	guo pause|resume|retry <seriesID>
 //	guo delete <seriesID> [--keep-video]
+//	guo serve                     启动 Web 服务（API + 前端）
 //
 // 环境变量：GUO_MEDIA_DIR（默认 ./media）、GUO_DB（默认 ./guo.db）、
-// GUO_JELLYFIN_URL、GUO_JELLYFIN_KEY、GUO_CONCURRENCY（默认 2）。
+// GUO_JELLYFIN_URL、GUO_JELLYFIN_KEY、GUO_CONCURRENCY（默认 2）、
+// GUO_ADDR（serve 监听地址，默认 :8080）。
 package main
 
 import (
 	"context"
 	"fmt"
+	"io/fs"
+	"net/http"
 	"os"
 	"strconv"
 	"strings"
@@ -20,6 +24,7 @@ import (
 	"github.com/2017fighting/guo/internal/hongguo"
 	"github.com/2017fighting/guo/internal/jellyfin"
 	"github.com/2017fighting/guo/internal/pipeline"
+	"github.com/2017fighting/guo/internal/server"
 	"github.com/2017fighting/guo/internal/store"
 )
 
@@ -50,9 +55,11 @@ func main() {
 		jf = &jellyfin.Client{BaseURL: url, APIKey: os.Getenv("GUO_JELLYFIN_KEY")}
 	}
 
+	source := hongguo.NewClient()
+
 	engine := &pipeline.Engine{
 		Store:     st,
-		Source:    hongguo.NewClient(),
+		Source:    source,
 		MediaRoot: env("GUO_MEDIA_DIR", "./media"),
 		FFMpeg:    &pipeline.ExecRunner{Path: env("GUO_FFMPEG", "ffmpeg")}, // P0 修复：接真实 ffmpeg
 		ASSExport: assExportSetting(st),
@@ -129,6 +136,16 @@ func main() {
 		keep := len(args) > 1 && args[1] == "--keep-video"
 		must(engine.DeleteJob(normalizeDramaID(args[0]), keep))
 		fmt.Println("deleted")
+	case "serve":
+		// Web 服务：API + 前端（web/dist 存在则伺服；embed 接线在容器化工单）
+		var static fs.FS
+		if _, err := os.Stat("web/dist/index.html"); err == nil {
+			static = os.DirFS("web/dist")
+		}
+		addr := env("GUO_ADDR", ":8080")
+		srv := &server.Server{Catalog: source, Static: static}
+		fmt.Fprintf(os.Stderr, "[guo] HTTP 服务已启动 %s（API /api/v1）\n", addr)
+		must(http.ListenAndServe(addr, srv.Handler()))
 	default:
 		usage()
 	}
@@ -162,6 +179,7 @@ func usage() {
   run                        排空队列
   list                       列任务
   pause|resume|retry <seriesID>
-  delete <seriesID> [--keep-video]`)
+  delete <seriesID> [--keep-video]
+  serve                      启动 Web 服务（GUO_ADDR，默认 :8080）`)
 	os.Exit(2)
 }
