@@ -58,7 +58,7 @@ func openStore(t *testing.T) *store.Store {
 
 func TestCacheMemoryWindowSkipsSource(t *testing.T) {
 	source := &fakeSource{pages: map[string]*BoardPage{"ranklist_hot_sc": boardPageForTest()}}
-	now := time.Date(2026, 10, 10, 12, 0, 0, 0, time.Local)
+	now := time.Date(2026, 10, 10, 12, 0, 0, 0, beijingZone())
 	cache := NewCache(source, nil)
 	cache.Now = func() time.Time { return now }
 
@@ -106,14 +106,14 @@ func TestCachePersistsToDisk(t *testing.T) {
 
 func TestCacheSameDayStaleFallback(t *testing.T) {
 	st := openStore(t)
-	stale := time.Date(2026, 10, 10, 8, 0, 0, 0, time.Local) // 当天早些时候
+	stale := time.Date(2026, 10, 10, 8, 0, 0, 0, beijingZone()) // 当天早些时候
 	payload := `{"list":"ranklist_prestige","items":[{"series_id":"7101","title":"旧榜剧","rank":1}],"offset":10,"session_id":"r.cg==","has_more":false,"updated_at":` +
 		strconv.FormatInt(stale.Unix(), 10) + `}`
 	if err := st.SaveRankingsCache("ranklist_prestige", 0, payload, stale.Unix()); err != nil {
 		t.Fatalf("预置缓存失败: %v", err)
 	}
 	source := &fakeSource{err: errors.New("源站 500"), failFor: 100}
-	now := time.Date(2026, 10, 10, 20, 0, 0, 0, time.Local) // 同日（东八区）
+	now := time.Date(2026, 10, 10, 20, 0, 0, 0, beijingZone()) // 同日（东八区）
 	cache := NewCache(source, st)
 	cache.Now = func() time.Time { return now }
 
@@ -131,13 +131,13 @@ func TestCacheSameDayStaleFallback(t *testing.T) {
 
 func TestCacheCrossDayInvalidates(t *testing.T) {
 	st := openStore(t)
-	yesterday := time.Date(2026, 10, 9, 20, 0, 0, 0, time.Local)
+	yesterday := time.Date(2026, 10, 9, 20, 0, 0, 0, beijingZone())
 	payload := `{"list":"ranklist_prestige","items":[],"offset":10,"has_more":false,"updated_at":` + strconv.FormatInt(yesterday.Unix(), 10) + `}`
 	if err := st.SaveRankingsCache("ranklist_prestige", 0, payload, yesterday.Unix()); err != nil {
 		t.Fatalf("预置缓存失败: %v", err)
 	}
 	source := &fakeSource{err: errors.New("源站 500"), failFor: 100}
-	now := time.Date(2026, 10, 10, 8, 0, 0, 0, time.Local) // 次日
+	now := time.Date(2026, 10, 10, 8, 0, 0, 0, beijingZone()) // 次日
 	cache := NewCache(source, st)
 	cache.Now = func() time.Time { return now }
 
