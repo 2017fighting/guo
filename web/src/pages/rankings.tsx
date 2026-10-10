@@ -109,10 +109,14 @@ export function RankingsPage() {
 
   return (
     <div>
-      {/* 8 榜横向 Tab（窄屏横向滚动）+ 数据更新时间 */}
+      {/* 8 榜横向 Tab：单行横向滚动（隐藏滚动条，移动端滑动切换）+ 数据更新时间 */}
       <div className="mb-4 flex items-center gap-3">
-        <Tabs value={board} onValueChange={setBoard}>
-          <TabsList aria-label="榜单" className="max-w-full overflow-x-auto">
+        <Tabs
+          value={board}
+          onValueChange={setBoard}
+          className="min-w-0 flex-1 overflow-x-auto overflow-y-hidden [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        >
+          <TabsList aria-label="榜单" className="min-w-max">
             {RANKING_BOARDS.map((b) => (
               <TabsTrigger key={b.id} value={b.id} className="px-3">
                 {b.label}
@@ -120,9 +124,8 @@ export function RankingsPage() {
             ))}
           </TabsList>
         </Tabs>
-        <div className="flex-1" />
         {phase === 'ready' && feed.updatedAt > 0 && (
-          <span className="hidden shrink-0 text-xs text-muted-foreground sm:inline">
+          <span className="ml-auto hidden shrink-0 text-xs text-muted-foreground sm:inline">
             数据更新于 {formatUpdatedAt(feed.updatedAt)}
           </span>
         )}
