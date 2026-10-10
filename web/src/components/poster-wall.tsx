@@ -1,5 +1,7 @@
 // 海报墙：响应式栅格（2/3/5/6 列，对齐 mockups/browse.html poster-grid）。
+// 卡片可点击进入详情页（/drama/:series_id）——详情/搜索/榜单通用行为。
 
+import { Link } from 'react-router-dom'
 import { PosterCard } from '@/components/poster-card'
 import { Skeleton } from '@/components/ui/skeleton'
 import type { CatalogItem } from '@/types/catalog'
@@ -8,7 +10,9 @@ export function PosterWall({ items }: { items: readonly CatalogItem[] }) {
   return (
     <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-5 xl:grid-cols-6">
       {items.map((item) => (
-        <PosterCard key={item.series_id} item={item} />
+        <Link key={item.series_id} to={`/drama/${item.series_id}`} className="rounded-lg focus-visible:outline-2">
+          <PosterCard item={item} />
+        </Link>
       ))}
     </div>
   )

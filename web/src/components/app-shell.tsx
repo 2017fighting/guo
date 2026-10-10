@@ -13,22 +13,23 @@ interface NavItemSpec {
   key: NavKey
   label: string
   ready: boolean
+  to?: string // ready 时客户端导航目标（react-router Link）
 }
 
 const NAV_ITEMS: NavItemSpec[] = [
   { key: 'browse', label: '浏览', ready: true },
   { key: 'rankings', label: '排行榜', ready: false },
-  { key: 'downloads', label: '下载队列', ready: false },
+  { key: 'downloads', label: '下载队列', ready: true, to: '/downloads' },
 ]
 
 const TABBAR_ITEMS: NavItemSpec[] = [
   { key: 'browse', label: '浏览', ready: true },
   { key: 'search', label: '搜索', ready: false },
-  { key: 'downloads', label: '下载', ready: false },
+  { key: 'downloads', label: '下载', ready: true, to: '/downloads' },
 ]
 
 function TopNavItem({ spec, active }: { spec: NavItemSpec; active: boolean }) {
-  if (!spec.ready) {
+  if (!spec.ready || !spec.to) {
     return (
       <span
         className="inline-flex min-h-11 items-center rounded-lg px-3 text-muted-foreground opacity-60"
@@ -39,14 +40,15 @@ function TopNavItem({ spec, active }: { spec: NavItemSpec; active: boolean }) {
     )
   }
   return (
-    <span
+    <Link
+      to={spec.to}
       aria-current={active ? 'page' : undefined}
       className={`inline-flex min-h-11 items-center rounded-lg px-3 font-medium ${
         active ? 'bg-accent text-foreground' : 'text-muted-foreground hover:text-foreground'
       }`}
     >
       {spec.label}
-    </span>
+    </Link>
   )
 }
 
@@ -106,6 +108,26 @@ export function AppShell({ active, children }: { active: NavKey; children: React
         {TABBAR_ITEMS.map((spec) => {
           const activeTab = spec.key === active
           const Icon = spec.key === 'search' ? Search : spec.key === 'downloads' ? Download : LayoutGrid
+          const inner = (
+            <>
+              <Icon className="size-5" aria-hidden />
+              {spec.label}
+            </>
+          )
+          if (spec.ready && spec.to) {
+            return (
+              <Link
+                key={spec.key}
+                to={spec.to}
+                aria-current={activeTab ? 'page' : undefined}
+                className={`flex min-h-14 flex-1 flex-col items-center justify-center gap-0.5 text-xs ${
+                  activeTab ? 'font-medium text-foreground' : 'text-muted-foreground'
+                }`}
+              >
+                {inner}
+              </Link>
+            )
+          }
           return (
             <span
               key={spec.key}
@@ -115,8 +137,7 @@ export function AppShell({ active, children }: { active: NavKey; children: React
                 activeTab ? 'font-medium text-foreground' : 'text-muted-foreground'
               } ${spec.ready ? '' : 'opacity-60'}`}
             >
-              <Icon className="size-5" aria-hidden />
-              {spec.label}
+              {inner}
             </span>
           )
         })}
