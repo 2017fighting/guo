@@ -1,0 +1,44 @@
+# guo 容器编排。首次使用见 README「部署」。
+# 一条命令起服务：docker compose up -d → 浏览器打开 http://<主机>:8080
+services:
+  guo:
+    image: ghcr.io/2017fighting/guo:latest
+    # 本地自构建（spec §11：ghcr 发布与 compose 自构建并存），改镜像源前先注释掉 image:
+    # build: .
+    container_name: guo
+    ports:
+      - "8080:8080"
+    environment:
+      GUO_ADDR: :8080
+      GUO_MEDIA_DIR: /data/media
+      GUO_DB: /data/db/guo.db
+      GUO_CONCURRENCY: "2" # 并发下载数 1-6（也可在设置页热调）
+      # Jellyfin 联动（可选）：与下方 jellyfin 服务一起解开注释即可容器名互通。
+      # Key 在 Jellyfin 控制台 → API Keys 创建（见 README）。
+      # GUO_JELLYFIN_URL: http://jellyfin:8096
+      # GUO_JELLYFIN_KEY: change-me
+    volumes:
+      - guo-media:/data/media # 媒体库（与 Jellyfin 共享，下载完成自动触发库刷新）
+      - guo-db:/data/db # SQLite 任务库（断电重启续传）
+      - guo-config:/data/config # 预留配置位
+    restart: unless-stopped
+
+  # ---- Jellyfin 联动示例（可选）：解开本段与上方 GUO_JELLYFIN_* 注释 ----
+  # 首次启动需在网页向导里建管理员，再把 API Key 填回 guo（设置页或上方环境变量）。
+  # jellyfin:
+  #   image: jellyfin/jellyfin:10.11.0
+  #   container_name: guo-jellyfin
+  #   ports:
+  #     - "8096:8096"
+  #   environment:
+  #     TZ: Asia/Shanghai
+  #   volumes:
+  #     - guo-media:/media # 与 guo 共享同一媒体卷（guo 侧挂 /data/media，这里挂 /media）
+  #     - ./jellyfin/config:/config
+  #     - ./jellyfin/cache:/cache
+  #   restart: unless-stopped
+
+volumes:
+  guo-media:
+  guo-db:
+  guo-config:

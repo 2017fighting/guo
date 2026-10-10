@@ -43,6 +43,7 @@ func (c *Client) timeout() time.Duration {
 }
 
 // Validate 验证 URL + API Key（GET /System/Info），用于配置保存时验活。
+// 非 200 时返回 *StatusError（携带上游状态码，供设置接口给出人话提示）。
 func (c *Client) Validate(ctx context.Context) error {
 	if !c.Enabled() {
 		return errors.New("jellyfin: not configured")
@@ -58,9 +59,16 @@ func (c *Client) Validate(ctx context.Context) error {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("jellyfin: /System/Info status %d", resp.StatusCode)
+		return &StatusError{Status: resp.StatusCode}
 	}
 	return nil
+}
+
+// StatusError /System/Info 返回非 200 时携带上游状态码。
+type StatusError struct{ Status int }
+
+func (e *StatusError) Error() string {
+	return fmt.Sprintf("jellyfin: /System/Info status %d", e.Status)
 }
 
 // RefreshAsync 异步触发全库刷新（POST /Library/Refresh），立即返回。

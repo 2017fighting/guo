@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -26,9 +27,15 @@ type Client struct {
 	HTTP      *http.Client
 	BaseURL   string // 测试注入用，默认线上地址
 	UserAgent string // 默认 appUserAgent；可配置（协议文档建议）
+	// WebBaseURL 官网页面/联想域基址（测试注入用；空 = 线上 hongguoduanju.com）
+	WebBaseURL string
 
 	deviceID  string
 	installID string
+
+	filtersMu      sync.Mutex // 筛选面板枚举缓存（CatalogFilters）
+	filters        *CatalogFilters
+	filtersExpires time.Time
 }
 
 // NewClient 创建客户端，设备身份进程内固定。

@@ -5,22 +5,34 @@
 //	guo list                       列任务与分集状态
 //	guo pause|resume|retry <seriesID>
 //	guo delete <seriesID> [--keep-video]
+//	guo serve                     启动 Web 服务（API + 前端）
 //
 // 环境变量：GUO_MEDIA_DIR（默认 ./media）、GUO_DB（默认 ./guo.db）、
-// GUO_JELLYFIN_URL、GUO_JELLYFIN_KEY、GUO_CONCURRENCY（默认 2）。
+// GUO_JELLYFIN_URL、GUO_JELLYFIN_KEY、GUO_CONCURRENCY（默认 2）、
+// GUO_ADDR（serve 监听地址，默认 :8080）。
 package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io/fs"
+	"net/http"
 	"os"
+	"os/signal"
+	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
+	"time"
 
 	"github.com/2017fighting/guo/internal/hongguo"
+	"github.com/2017fighting/guo/internal/hongguo/rankings"
 	"github.com/2017fighting/guo/internal/jellyfin"
 	"github.com/2017fighting/guo/internal/pipeline"
+	"github.com/2017fighting/guo/internal/server"
 	"github.com/2017fighting/guo/internal/store"
+	"github.com/2017fighting/guo/web"
 )
 
 func env(key, def string) string {
@@ -50,9 +62,11 @@ func main() {
 		jf = &jellyfin.Client{BaseURL: url, APIKey: os.Getenv("GUO_JELLYFIN_KEY")}
 	}
 
+	source := hongguo.NewClient()
+
 	engine := &pipeline.Engine{
 		Store:     st,
-		Source:    hongguo.NewClient(),
+		Source:    source,
 		MediaRoot: env("GUO_MEDIA_DIR", "./media"),
 		FFMpeg:    &pipeline.ExecRunner{Path: env("GUO_FFMPEG", "ffmpeg")}, // P0 修复：接真实 ffmpeg
 		ASSExport: assExportSetting(st),
@@ -67,6 +81,12 @@ func main() {
 			n = 6 // #7 决议：可配 1–6
 		}
 		engine.Concurrency = n
+	}
+	// 热读取接缝：每次领取任务/导出分集前重读 settings 表（表值优先，
+	// 环境变量兑底——与启动口径一致），设置页保存后无需重启进程。
+	engine.SettingsLookup = func() pipeline.HotSettings {
+		s := server.LoadSettings(st)
+		return pipeline.HotSettings{Concurrency: s.Concurrency, ASSExport: s.AssExport}
 	}
 
 	ctx := context.Background()
@@ -129,9 +149,55 @@ func main() {
 		keep := len(args) > 1 && args[1] == "--keep-video"
 		must(engine.DeleteJob(normalizeDramaID(args[0]), keep))
 		fmt.Println("deleted")
+	case "serve":
+		// Web 服务：API + 前端。前端来源见 staticFS——磁盘 web/dist（开发模式，
+		// pnpm build 热替换）优先，否则用编译期 embed（go build -tags embed，容器镜像走这条路）。
+		// 引擎常驻：JobRunner 事件驱动排空队列（含断电重启续传），SSE 推队列事件。
+		static := staticFS("web/dist", web.Dist())
+		addr := env("GUO_ADDR", ":8080")
+
+		runner := pipeline.NewJobRunner(engine)
+		srv := &server.Server{
+			Catalog: source, Drama: source, Downloads: runner,
+			Streams: source, Danmaku: source,
+			Rankings: rankings.NewCache(rankings.NewClient(), st), Search: source,
+			Settings: st, Static: static,
+		}
+		hub := server.NewEventHub(srv.QueueSnapshot)
+		srv.Events = hub
+		engine.OnEvent = hub.Signal
+
+		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+		defer stop()
+		runner.Start(ctx) // 启动即排空遗留队列（含 running 复位续传）
+
+		httpSrv := &http.Server{Addr: addr, Handler: srv.Handler()}
+		go func() {
+			<-ctx.Done()
+			fmt.Fprintln(os.Stderr, "[guo] 收到退出信号，正在收尾…")
+			shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			if err := httpSrv.Shutdown(shutdownCtx); err != nil {
+				fmt.Fprintf(os.Stderr, "[guo] HTTP 收尾超时: %v\n", err)
+			}
+		}()
+		fmt.Fprintf(os.Stderr, "[guo] HTTP 服务已启动 %s（API /api/v1，下载引擎常驻）\n", addr)
+		if err := httpSrv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			must(err)
+		}
+		runner.Stop() // 等在跑任务到分集边界退出
 	default:
 		usage()
 	}
+}
+
+// staticFS 选择 serve 的前端来源：磁盘上的构建产物（开发模式，pnpm build 热替换）
+// 优先，不存在则回落编译期 embed 的前端（nil = 两者皆无，不伺服静态资源）。
+func staticFS(diskRoot string, embedded fs.FS) fs.FS {
+	if _, err := os.Stat(filepath.Join(diskRoot, "index.html")); err == nil {
+		return os.DirFS(diskRoot)
+	}
+	return embedded
 }
 
 func mustArg(args []string, n int, usageLine string) {
@@ -162,6 +228,7 @@ func usage() {
   run                        排空队列
   list                       列任务
   pause|resume|retry <seriesID>
-  delete <seriesID> [--keep-video]`)
+  delete <seriesID> [--keep-video]
+  serve                      启动 Web 服务（GUO_ADDR，默认 :8080）`)
 	os.Exit(2)
 }

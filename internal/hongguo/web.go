@@ -28,14 +28,15 @@ var routerDataRe = regexp.MustCompile(`(?s)(?:window\.)?_ROUTER_DATA\s*=\s*`)
 
 const webUA = pipeline.IPhoneUA
 
-// fetchWeb 拉官网页面文本。
+// fetchWeb 拉官网页面文本（基址可测试注入，见 Client.WebBaseURL）。
 func (c *Client) fetchWeb(ctx context.Context, path string) (string, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, webBaseURL+path, nil)
+	base := c.webBase()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, base+path, nil)
 	if err != nil {
 		return "", err
 	}
 	req.Header.Set("User-Agent", webUA)
-	req.Header.Set("Referer", webBaseURL+"/")
+	req.Header.Set("Referer", base+"/")
 	req.Header.Set("Accept-Language", "zh-CN,zh;q=0.9")
 	client := c.HTTP
 	if client == nil {
