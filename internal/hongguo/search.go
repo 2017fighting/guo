@@ -97,24 +97,24 @@ func searchQueryTokens(query string) []string {
 // （guoapp tie-break），其余保持稳定（双通道合并后的原始顺序）。
 func rankSearchItems(items []CatalogItem, query string) []CatalogItem {
 	type ranked struct {
-		item     CatalogItem
-		rank     int
-		base     string
-		unit     string
-		num      int
-		hasSeson bool
+		item      CatalogItem
+		rank      int
+		base      string
+		unit      string
+		num       int
+		hasSeason bool
 	}
 	rows := make([]ranked, len(items))
 	for i, it := range items {
 		base, unit, num, ok := seasonSuffix(it.Title)
-		rows[i] = ranked{item: it, rank: titleSearchRank(it.Title, query), base: base, unit: unit, num: num, hasSeson: ok}
+		rows[i] = ranked{item: it, rank: titleSearchRank(it.Title, query), base: base, unit: unit, num: num, hasSeason: ok}
 	}
 	sort.SliceStable(rows, func(i, j int) bool {
 		if rows[i].rank != rows[j].rank {
 			return rows[i].rank < rows[j].rank
 		}
 		a, b := rows[i], rows[j]
-		if a.hasSeson && b.hasSeson && a.base == b.base && a.unit == b.unit {
+		if a.hasSeason && b.hasSeason && a.base == b.base && a.unit == b.unit {
 			return a.num < b.num
 		}
 		return false

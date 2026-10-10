@@ -145,6 +145,8 @@ export function SearchPage() {
   )
 
   const onKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
+    // 中文输入法组词中的按键（回车确认候选等）不触发导航/搜索
+    if (event.nativeEvent.isComposing) return
     if (event.key === 'ArrowDown' && suggestOpen && suggests.length > 0) {
       event.preventDefault()
       setActiveIndex((i) => (i + 1) % suggests.length)
