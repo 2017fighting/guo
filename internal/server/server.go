@@ -28,6 +28,7 @@ type RankingsSource interface {
 type Server struct {
 	Catalog  CatalogSource
 	Rankings RankingsSource
+	Settings SettingsStore
 	Static   fs.FS
 }
 
