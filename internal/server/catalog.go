@@ -2,7 +2,6 @@ package server
 
 import (
 	"net/http"
-	"strconv"
 
 	"github.com/2017fighting/guo/internal/hongguo"
 )
@@ -25,14 +24,9 @@ func (s *Server) handleCatalog(w http.ResponseWriter, r *http.Request) {
 			"genre 只支持 all / short_play / comic_series / ai_series")
 		return
 	}
-	offset := 0
-	if raw := query.Get("offset"); raw != "" {
-		n, err := strconv.Atoi(raw)
-		if err != nil || n < 0 {
-			writeError(w, http.StatusBadRequest, "请求参数不对", "offset 需是非负整数，请从上一页响应里取游标")
-			return
-		}
-		offset = n
+	offset, ok := parseOffset(w, query.Get("offset"))
+	if !ok {
+		return
 	}
 	page, err := s.Catalog.CatalogPage(r.Context(), hongguo.CatalogQuery{
 		Genre: genre, Offset: offset, SessionID: query.Get("session_id"),

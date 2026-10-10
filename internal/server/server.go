@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"io/fs"
 	"net/http"
+	"strconv"
 
 	"github.com/2017fighting/guo/internal/hongguo"
 	"github.com/2017fighting/guo/internal/hongguo/rankings"
@@ -63,4 +64,19 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 // writeError 统一错误出口：message 讲人话，hint 给出路或上游细节。
 func writeError(w http.ResponseWriter, status int, message, hint string) {
 	writeJSON(w, status, map[string]string{"message": message, "hint": hint})
+}
+
+// parseOffset 解析非负整数 offset 游标：缺省 0；非法或负数写 400 人话报错。
+// 目录与榜单分页共用（catalog.go / rankings.go）。
+func parseOffset(w http.ResponseWriter, raw string) (int, bool) {
+	if raw == "" {
+		return 0, true
+	}
+	n, err := strconv.Atoi(raw)
+	if err != nil || n < 0 {
+		writeError(w, http.StatusBadRequest, "请求参数不对",
+			"offset 需是非负整数，请从上一页响应里取游标")
+		return 0, false
+	}
+	return n, true
 }
