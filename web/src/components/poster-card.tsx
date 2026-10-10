@@ -8,18 +8,21 @@ function subParts(item: CatalogItem): string[] {
   const parts: string[] = []
   if (item.episode_count) parts.push(`${item.episode_count} 集`)
   if (item.status) parts.push(item.status)
-  if (item.heat) parts.push(formatHeat(item.heat))
+  // landpage 现网卡片常缺热度字段（实测 89 条 0 命中），退回播放量展示
+  const metric = item.heat ? formatMetric(item.heat, '热度') : item.play_count ? formatMetric(item.play_count, '播放') : ''
+  if (metric) parts.push(metric)
   return parts
 }
 
-// 纯数字热度（hot_score_data.score 数值文本）转亿/万展示；已带单位文本原样展示。
-export function formatHeat(heat: string): string {
-  if (/[^\d.,+\s]/.test(heat)) return heat // 已含单位/文字
-  const value = Number.parseFloat(heat.replace(/[,，\s+]/g, ''))
-  if (Number.isNaN(value) || value < 0) return heat
-  if (value >= 1e8) return `${round(value / 1e8)}亿热度`
-  if (value >= 1e4) return `${round(value / 1e4)}万热度`
-  return `${round(value)}热度`
+// 热度/播放量展示：纯数值文本（实测 landpage play_count 恒为数字）转亿/万口径；
+// 已带单位/文字的文本（如「4868万热度」）原样展示。
+export function formatMetric(text: string, suffix: string): string {
+  if (!/^[\d.,+\s]+$/.test(text.trim())) return text
+  const value = Number.parseFloat(text.replace(/[,，\s+]/g, ''))
+  if (Number.isNaN(value) || value < 0) return text
+  if (value >= 1e8) return `${round(value / 1e8)}亿${suffix}`
+  if (value >= 1e4) return `${round(value / 1e4)}万${suffix}`
+  return `${round(value)}${suffix}`
 }
 
 function round(value: number): string {
