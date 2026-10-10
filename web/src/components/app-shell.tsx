@@ -33,6 +33,7 @@ const NAV_HREF: Record<NavKey, string> = {
   search: '/search',
   rankings: '/rankings',
   downloads: '/downloads',
+  settings: '/settings',
 }
 
 function TopNavItem({ spec, active }: { spec: NavItemSpec; active: boolean }) {
