@@ -19,6 +19,8 @@ export default function App() {
         <Routes>
           <Route path="/" element={<BrowsePage />} />
           <Route path="/search" element={<SearchPage />} />
+          {/* 未接入路由（如 /drama/:id 等）暂回落浏览页，对应 lane 合入后自然接上 */}
+          <Route path="*" element={<BrowsePage />} />
         </Routes>
       </AppShell>
     </ThemeProvider>
