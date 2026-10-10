@@ -20,9 +20,10 @@ type CatalogSource interface {
 // Server HTTP 入口。Static 为前端产物根（含 index.html，web/dist），
 // embed 接线在容器化工单完成；nil 表示仅 API。
 type Server struct {
-	Catalog CatalogSource
+	Catalog  CatalogSource
+	Search   SearchSource
 	Settings SettingsStore
-	Static  fs.FS
+	Static   fs.FS
 }
 
 // Handler 返回完整路由（API + 静态回落）。
