@@ -22,3 +22,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# global git ignore has a VS-style [Ll]ib pattern; src/lib is source code — keep tracked
+!src/lib/
