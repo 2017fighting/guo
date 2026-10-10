@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>下载队列 · 红果 Web</title>
+<link rel="stylesheet" href="theme.css">
+</head>
+<body>
+<header class="topnav">
+  <div class="container topnav-inner">
+    <a href="browse.html" class="brand">红果鉴·Web</a>
+    <nav class="navtabs" aria-label="主导航">
+      <a class="navtab" href="browse.html">浏览</a>
+      <a class="navtab" href="#" title="等排行榜接口抓包后上线">排行榜<sup class="badge badge-outline" style="margin-left:4px">待抓包</sup></a>
+      <a class="navtab" href="downloads.html" aria-current="page">下载队列</a>
+    </nav>
+    <div class="flex-1"></div>
+    <a href="search.html" class="btn btn-outline btn-sm topnav-search">🔍 搜索</a>
+    <button class="btn btn-outline btn-icon theme-toggle" onclick="guoToggleTheme()" aria-label="切换深浅主题">🌓</button>
+  </div>
+</header>
+
+<main class="container mt-4" style="max-width:900px">
+  <div class="flex items-center justify-between mb-4">
+    <h1 class="text-xl font-semibold">下载队列</h1>
+    <div class="flex gap-2">
+      <button class="btn btn-sm btn-outline">全部暂停</button>
+      <button class="btn btn-sm btn-outline">全部继续</button>
+    </div>
+  </div>
+
+  <!-- 任务=剧：进度按剧展示（#7 决议） -->
+  <div class="card" style="padding:16px">
+    <div class="flex gap-4" style="align-items:flex-start;flex-wrap:wrap">
+      <div class="poster-cover tone-1" style="width:96px;border-radius:8px;border:1px solid var(--border);flex:none">宴律</div>
+      <div class="flex-1" style="min-width:240px">
+        <div class="flex items-center gap-2" style="flex-wrap:wrap">
+          <a class="font-semibold" href="detail.html">宴律，你的白月光回国了</a>
+          <span class="badge">1080p</span>
+          <span class="badge badge-outline">下载中 · 第 42/76 集</span>
+        </div>
+        <!-- 确定值进度 + 当前分集（Goal-Gradient / >10s 显示进度） -->
+        <div class="progress mt-4" role="progressbar" aria-valuenow="55" aria-valuemin="0" aria-valuemax="100" aria-label="整体进度 55%">
+          <div class="progress-bar" style="width:55%"></div>
+        </div>
+        <div class="flex justify-between text-xs muted mt-2">
+          <span>整体 42/76 集 · 325MB / 592MB</span>
+          <span>2.1 MB/s · 预计剩余 2 分 10 秒</span>
+        </div>
+        <div class="flex gap-2 mt-4" style="flex-wrap:wrap">
+          <button class="btn btn-sm btn-outline">⏸ 暂停</button>
+          <button class="btn btn-sm btn-outline">更新本剧</button>
+          <button class="btn btn-sm btn-outline">重试失败集</button>
+          <button class="btn btn-sm btn-destructive" id="delBtn">删除</button>
+        </div>
+        <!-- 分集明细（折叠；done/current 状态双通道表达） -->
+        <details class="mt-4">
+          <summary class="text-sm" style="color:var(--muted-foreground);cursor:pointer;min-height:32px;display:inline-flex;align-items:center">分集明细</summary>
+          <div class="ep-grid mt-2">
+            <span class="ep-cell done" title="已完成">✓1</span><span class="ep-cell done" title="已完成">✓2</span>
+            <span class="ep-cell done" title="已完成">✓3</span><span class="ep-cell current" title="正在下载">42↓</span>
+            <span class="ep-cell" title="待下载">43</span><span class="ep-cell" title="待下载">44</span>
+            <span class="ep-cell" title="待下载">45</span><span class="ep-cell" title="待下载">46</span>
+          </div>
+          <div class="text-xs muted mt-2">✓ 已完成 · ↓ 正在下载 · 数字 待下载</div>
+        </details>
+      </div>
+    </div>
+  </div>
+
+  <!-- 完成态示例 -->
+  <div class="card mt-4" style="padding:16px">
+    <div class="flex gap-4" style="align-items:flex-start;flex-wrap:wrap">
+      <div class="poster-cover tone-2" style="width:96px;border-radius:8px;border:1px solid var(--border);flex:none">首辅娇娘</div>
+      <div class="flex-1" style="min-width:240px">
+        <div class="flex items-center gap-2" style="flex-wrap:wrap">
+          <a class="font-semibold" href="detail.html">首辅娇娘</a>
+          <span class="badge">720p</span>
+          <span class="badge badge-outline">✓ 已完成 · 100/100 集 · Jellyfin 已刷新</span>
+        </div>
+        <div class="progress mt-4"><div class="progress-bar" style="width:100%"></div></div>
+        <div class="flex gap-2 mt-4">
+          <button class="btn btn-sm btn-outline">更新本剧</button>
+          <button class="btn btn-sm btn-destructive" id="delBtn2">删除</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 失败态示例（H1 状态可见 + H5 纠错：说明原因与出路，不只颜色） -->
+  <div class="card mt-4" style="padding:16px">
+    <div class="flex gap-4" style="align-items:flex-start;flex-wrap:wrap">
+      <div class="poster-cover tone-1" style="width:96px;border-radius:8px;border:1px solid var(--border);flex:none">灾年逆袭</div>
+      <div class="flex-1" style="min-width:240px">
+        <div class="flex items-center gap-2" style="flex-wrap:wrap">
+          <a class="font-semibold" href="detail.html">灾年逆袭：我靠穿越养全家</a>
+          <span class="badge">1080p</span>
+          <span class="badge" style="background:var(--destructive);color:oklch(0.985 0 0)">⚠ 失败 · 58/62 集</span>
+        </div>
+        <div class="text-sm mt-4">第 59–62 集下载失败：源站流地址过期且重取 3 次未成功。稍后点「重试失败集」重下，或删除任务后重新添加。</div>
+        <div class="flex gap-2 mt-4">
+          <button class="btn btn-sm btn-primary">重试失败集（4）</button>
+          <button class="btn btn-sm btn-outline">更新本剧</button>
+          <button class="btn btn-sm btn-destructive" id="delBtn3">删除</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<!-- 删除确认（不可逆→确认；保留视频选项；按钮=结果动词） -->
+<div id="delModal" style="position:fixed;inset:0;z-index:50;display:flex;align-items:center;justify-content:center;background:oklch(0 0 0 / 50%)" hidden>
+  <div class="card" role="dialog" aria-modal="true" aria-labelledby="delTitle" style="width:min(440px,92vw);padding:16px">
+    <h2 id="delTitle" class="text-lg font-semibold mb-2">删除下载任务？</h2>
+    <p class="text-sm muted mb-4">「宴律，你的白月光回国了」将从队列移除。</p>
+    <label class="flex items-center gap-2 text-sm mb-4" style="min-height:32px">
+      <input type="checkbox" checked style="width:18px;height:18px"> 同时删除已下载的视频文件
+    </label>
+    <div class="flex gap-2 justify-between">
+      <button class="btn btn-outline" onclick="document.getElementById('delModal').hidden=true">保留任务</button>
+      <button class="btn btn-destructive">确认删除</button>
+    </div>
+  </div>
+</div>
+
+<nav class="tabbar" aria-label="底部导航">
+  <a class="tabbar-item" href="browse.html"><span>□</span>浏览</a>
+  <a class="tabbar-item" href="search.html"><span>🔍</span>搜索</a>
+  <a class="tabbar-item" href="downloads.html" aria-current="page"><span>↓</span>下载</a>
+</nav>
+<script src="app.js"></script>
+<script>
+for (var b of ["delBtn","delBtn2","delBtn3"]) document.getElementById(b).onclick=function(){document.getElementById("delModal").hidden=false};
+</script>
+</body>
+</html>

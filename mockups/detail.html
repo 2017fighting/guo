@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>详情 · 宴律，你的白月光回国了</title>
+<link rel="stylesheet" href="theme.css">
+</head>
+<body>
+<header class="topnav">
+  <div class="container topnav-inner">
+    <a href="browse.html" class="brand">红果鉴·Web</a>
+    <nav class="navtabs" aria-label="主导航">
+      <a class="navtab" href="browse.html">浏览</a>
+      <a class="navtab" href="#" title="等排行榜接口抓包后上线">排行榜<sup class="badge badge-outline" style="margin-left:4px">待抓包</sup></a>
+      <a class="navtab" href="downloads.html">下载队列</a>
+    </nav>
+    <div class="flex-1"></div>
+    <a href="search.html" class="btn btn-outline btn-sm topnav-search">🔍 搜索</a>
+    <button class="btn btn-outline btn-icon theme-toggle" onclick="guoToggleTheme()" aria-label="切换深浅主题">🌓</button>
+  </div>
+</header>
+
+<main class="container mt-4">
+  <a href="browse.html" class="muted text-sm">← 返回浏览</a>
+
+  <!-- 资料：海报 + 元信息（Common Region：同一卡片内成组） -->
+  <div class="card mt-4" style="padding:16px">
+    <div class="flex gap-4" style="align-items:flex-start;flex-wrap:wrap">
+      <div class="poster-cover tone-1" style="width:150px;border-radius:var(--radius);border:1px solid var(--border);flex:none">宴律，你的白月光回国了</div>
+      <div class="flex-1" style="min-width:260px">
+        <h1 class="text-xl font-semibold">宴律，你的白月光回国了</h1>
+        <div class="flex gap-2 mt-4" style="flex-wrap:wrap">
+          <span class="badge">2025</span><span class="badge">76 集 · 完结</span>
+          <span class="badge">都市爱情</span><span class="badge">律师</span><span class="badge">白月光</span>
+        </div>
+        <div class="flex gap-4 mt-4 text-sm muted">
+          <span>热度 1.2亿</span><span>播放 8.9亿</span><span>上线 2025-05-18</span><span>评分 9.2</span>
+        </div>
+        <p class="text-sm mt-4" id="plot">七年前，顾星晚捅伤亲生父亲入狱；五年前，宴矜撑伞在监狱门口等她，却得知她早已出狱。时隔七年重逢，顾星晚望着律界大佬宴矜怔住了——当年那个被她退婚的穷小子，如今高高在上。而他看向她的眼神，仿佛在说：这一次，你别想再逃。</p>
+        <button class="btn btn-sm mt-4" style="color:var(--muted-foreground);padding:0" onclick="var p=document.getElementById('plot');p.classList.toggle('truncate')" aria-expanded="false">展开/收起简介</button>
+
+        <!-- 每视图唯一主行动：立即播放（Von Restorff + H8） -->
+        <div class="flex gap-2 mt-6" style="flex-wrap:wrap">
+          <a class="btn btn-primary" href="play.html" style="min-width:140px">▶ 立即播放</a>
+          <button class="btn btn-outline" id="dlBtn">↓ 下载本剧</button>
+          <button class="btn btn-outline btn-icon" title="追剧（规划中）">＋</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 选集（Miller：分组 50/组；Fitts：格≥44px） -->
+  <div class="card mt-4" style="padding:16px">
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="text-lg font-semibold">选集 <span class="muted text-sm">第 1–50 集</span></h2>
+      <div class="flex gap-2">
+        <button class="btn btn-sm btn-secondary">1–50</button>
+        <button class="btn btn-sm btn-outline">51–76</button>
+      </div>
+    </div>
+    <div class="ep-grid">
+      <a class="ep-cell current" href="play.html">1</a>
+      <a class="ep-cell" href="play.html">2</a><a class="ep-cell" href="play.html">3</a>
+      <a class="ep-cell" href="play.html">4</a><a class="ep-cell" href="play.html">5</a>
+      <a class="ep-cell" href="play.html">6</a><a class="ep-cell" href="play.html">7</a>
+      <a class="ep-cell" href="play.html">8</a><a class="ep-cell" href="play.html">9</a>
+      <a class="ep-cell" href="play.html">10</a><a class="ep-cell" href="play.html">11</a>
+      <a class="ep-cell" href="play.html">12</a><a class="ep-cell" href="play.html">13</a>
+      <a class="ep-cell" href="play.html">14</a><a class="ep-cell" href="play.html">15</a>
+      <a class="ep-cell" href="play.html">16</a><a class="ep-cell" href="play.html">17</a>
+      <a class="ep-cell" href="play.html">18</a><a class="ep-cell" href="play.html">19</a>
+      <a class="ep-cell" href="play.html">20</a>
+    </div>
+  </div>
+</main>
+
+<!-- 下载弹层：选集 + 画质（Modal：聚焦决策；主行动唯一） -->
+<div class="absolute" id="dlModal" style="position:fixed;inset:0;z-index:50;display:flex;align-items:center;justify-content:center;background:oklch(0 0 0 / 50%)" hidden>
+  <div class="card" role="dialog" aria-modal="true" aria-labelledby="dlTitle" style="width:min(560px,92vw);padding:16px">
+    <h2 id="dlTitle" class="text-lg font-semibold mb-4">下载「宴律，你的白月光回国了」</h2>
+    <div class="mb-4">
+      <div class="text-sm font-medium mb-2">画质</div>
+      <div class="flex gap-2">
+        <button class="btn btn-sm btn-primary">1080p（最高）</button>
+        <button class="btn btn-sm btn-secondary">720p</button>
+        <button class="btn btn-sm btn-secondary">480p</button>
+      </div>
+    </div>
+    <div class="mb-4">
+      <div class="flex items-center justify-between mb-2">
+        <div class="text-sm font-medium">分集</div>
+        <div class="flex gap-2"><button class="btn btn-sm btn-secondary">全选 76 集</button><button class="btn btn-sm">全不选</button></div>
+      </div>
+      <div class="ep-grid" style="max-height:200px;overflow:auto;padding:2px">
+        <button class="ep-cell current">1</button>
+        <button class="ep-cell">2</button><button class="ep-cell">3</button><button class="ep-cell">4</button>
+        <button class="ep-cell">5</button><button class="ep-cell">6</button><button class="ep-cell">7</button>
+        <button class="ep-cell">8</button><button class="ep-cell">9</button><button class="ep-cell">10</button>
+      </div>
+      <div class="text-xs muted mt-2">已选 10 集 · 每集约 36MB</div>
+    </div>
+    <div class="flex gap-2 justify-between">
+      <button class="btn btn-outline" onclick="document.getElementById('dlModal').hidden=true">取消</button>
+      <button class="btn btn-primary" onclick="location.href='downloads.html'">加入下载队列</button>
+    </div>
+  </div>
+</div>
+
+<nav class="tabbar" aria-label="底部导航">
+  <a class="tabbar-item" href="browse.html" aria-current="page"><span>□</span>浏览</a>
+  <a class="tabbar-item" href="search.html"><span>🔍</span>搜索</a>
+  <a class="tabbar-item" href="downloads.html"><span>↓</span>下载</a>
+</nav>
+<script src="app.js"></script>
+<script>document.getElementById("dlBtn").onclick=function(){document.getElementById("dlModal").hidden=false};</script>
+</body>
+</html>

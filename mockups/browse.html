@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>浏览 · 红果 Web</title>
+<link rel="stylesheet" href="theme.css">
+</head>
+<body>
+<header class="topnav">
+  <div class="container topnav-inner">
+    <a href="browse.html" class="brand">红果鉴·Web</a>
+    <nav class="navtabs" aria-label="主导航">
+      <a class="navtab" href="browse.html" aria-current="page">浏览</a>
+      <a class="navtab" href="#" title="等排行榜接口抓包后上线">排行榜<sup class="badge badge-outline" style="margin-left:4px">待抓包</sup></a>
+      <a class="navtab" href="downloads.html">下载队列</a>
+    </nav>
+    <div class="flex-1"></div>
+    <a href="search.html" class="btn btn-outline btn-sm topnav-search" aria-label="搜索">🔍 搜索</a>
+    <button class="btn btn-outline btn-icon theme-toggle" onclick="guoToggleTheme()" aria-label="切换深浅主题">🌓</button>
+  </div>
+</header>
+
+<main class="container mt-4">
+  <!-- 类型 Tabs（Miller：4 项； Hick：先类型后细化筛选） -->
+  <div class="flex items-center gap-2 mb-4" role="tablist" aria-label="内容类型">
+    <button class="btn btn-sm btn-primary" role="tab" aria-selected="true">全部</button>
+    <button class="btn btn-sm btn-secondary" role="tab" aria-selected="false">真人剧</button>
+    <button class="btn btn-sm btn-secondary" role="tab" aria-selected="false">漫剧</button>
+    <button class="btn btn-sm btn-secondary" role="tab" aria-selected="false">AI 剧</button>
+    <div class="flex-1"></div>
+    <label class="sr-only" for="sort">排序方式</label>
+    <select id="sort" class="input" style="min-height:36px;width:auto">
+      <option>默认排序</option><option>热度最高</option><option>最近上线</option>
+      <option>播放量最多</option><option>名称</option>
+    </select>
+    <button class="btn btn-sm btn-outline" id="filterBtn" aria-expanded="false">筛选 ▾</button>
+  </div>
+
+  <!-- 高级筛选（渐进披露：默认收起，Hick） -->
+  <div class="card mb-4 hidden" id="filterPanel" style="padding:12px">
+    <div class="flex gap-6 flex-col" style="gap:8px">
+      <div class="flex items-center gap-2"><span class="muted" style="width:56px">题材</span>
+        <span class="flex gap-2" style="flex-wrap:wrap">
+          <button class="btn btn-sm btn-secondary">都市</button><button class="btn btn-sm btn-outline">甜宠</button>
+          <button class="btn btn-sm btn-outline">逆袭</button><button class="btn btn-sm btn-outline">重生</button>
+          <button class="btn btn-sm btn-outline">穿越</button><button class="btn btn-sm btn-outline">复仇</button>
+          <button class="btn btn-sm btn-outline">战神</button><button class="btn btn-sm btn-outline">古装</button>
+        </span>
+      </div>
+      <div class="flex items-center gap-2"><span class="muted" style="width:56px">状态</span>
+        <span class="flex gap-2">
+          <button class="btn btn-sm btn-secondary">全部</button>
+          <button class="btn btn-sm btn-outline">连载中</button>
+          <button class="btn btn-sm btn-outline">已完结</button>
+        </span>
+      </div>
+      <div class="flex items-center gap-2"><span class="muted" style="width:56px">上线</span>
+        <span class="flex gap-2">
+          <button class="btn btn-sm btn-secondary">不限</button>
+          <button class="btn btn-sm btn-outline">今日上新</button>
+          <button class="btn btn-sm btn-outline">本周</button>
+          <button class="btn btn-sm btn-outline">本月</button>
+        </span>
+      </div>
+    </div>
+  </div>
+
+  <div class="poster-grid">
+    <a class="poster-card" href="detail.html">
+      <div class="poster-cover tone-1">宴律，你的白月光回国了</div>
+      <div class="poster-meta">
+        <div class="poster-title">宴律，你的白月光回国了</div>
+        <div class="poster-sub"><span>76 集</span><span>·</span><span>完结</span><span>·</span><span>1.2亿热度</span></div>
+      </div>
+    </a>
+    <a class="poster-card" href="detail.html">
+      <div class="poster-cover tone-2">首辅娇娘</div>
+      <div class="poster-meta">
+        <div class="poster-title">首辅娇娘</div>
+        <div class="poster-sub"><span>100 集</span><span>·</span><span>连载</span><span>·</span><span>8901万热度</span></div>
+      </div>
+    </a>
+    <a class="poster-card" href="detail.html">
+      <div class="poster-cover tone-1">重回1988，我从倒货开始养家致富</div>
+      <div class="poster-meta">
+        <div class="poster-title">重回1988，我从倒货开始养家致富</div>
+        <div class="poster-sub"><span>88 集</span><span>·</span><span>完结</span><span>·</span><span>6500万热度</span></div>
+      </div>
+    </a>
+    <a class="poster-card" href="detail.html">
+      <div class="poster-cover tone-2">灾年逆袭：我靠穿越养全家</div>
+      <div class="poster-meta">
+        <div class="poster-title">灾年逆袭：我靠穿越养全家</div>
+        <div class="poster-sub"><span class="badge badge-vip">VIP</span><span>62 集</span><span>·</span><span>连载</span></div>
+      </div>
+    </a>
+    <a class="poster-card" href="detail.html">
+      <div class="poster-cover tone-1">万妖图录传第十三季</div>
+      <div class="poster-meta">
+        <div class="poster-title">万妖图录传第十三季</div>
+        <div class="poster-sub"><span>漫剧</span><span>·</span><span>24 集</span><span>·</span><span>完结</span></div>
+      </div>
+    </a>
+    <a class="poster-card" href="detail.html">
+      <div class="poster-cover tone-2">反向拿捏：和闺蜜穿七零带着婆婆一起离</div>
+      <div class="poster-meta">
+        <div class="poster-title">反向拿捏：和闺蜜穿七零带着婆婆一起离</div>
+        <div class="poster-sub"><span>40 集</span><span>·</span><span>完结</span><span>·</span><span>3200万热度</span></div>
+      </div>
+    </a>
+    <a class="poster-card" href="detail.html">
+      <div class="poster-cover tone-1">聚宝仙盆之杂灵根才是真BOSS第十三季</div>
+      <div class="poster-meta">
+        <div class="poster-title">聚宝仙盆之杂灵根才是真BOSS第十三季</div>
+        <div class="poster-sub"><span>漫剧</span><span>·</span><span>30 集</span><span>·</span><span>连载</span></div>
+      </div>
+    </a>
+    <a class="poster-card" href="detail.html">
+      <div class="poster-cover tone-2">穿书后我成了反派的白月光</div>
+      <div class="poster-meta">
+        <div class="poster-title">穿书后我成了反派的白月光</div>
+        <div class="poster-sub"><span>AI 剧</span><span>·</span><span>80 集</span><span>·</span><span>完结</span></div>
+      </div>
+    </a>
+  </div>
+
+  <div class="load-more"><button class="btn btn-outline">加载更多</button></div>
+</main>
+
+<!-- 移动端底部导航 -->
+<nav class="tabbar" aria-label="底部导航">
+  <a class="tabbar-item" href="browse.html" aria-current="page"><span>□</span>浏览</a>
+  <a class="tabbar-item" href="search.html"><span>🔍</span>搜索</a>
+  <a class="tabbar-item" href="downloads.html"><span>↓</span>下载</a>
+</nav>
+
+<script src="app.js"></script>
+<script>
+document.getElementById("filterBtn").onclick = function () {
+  var p = document.getElementById("filterPanel");
+  var open = p.classList.toggle("hidden") === false;
+  this.setAttribute("aria-expanded", open);
+  this.textContent = open ? "筛选 ▴" : "筛选 ▾";
+};
+</script>
+</body>
+</html>

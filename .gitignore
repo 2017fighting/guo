@@ -8,3 +8,6 @@ media/
 .scratch/
 .jellyfin/
 /guo
+node_modules/
+# 抓包原始材料与 APK 不入库（#5 票约定存放位置，仅本地）
+docs/research/raw/

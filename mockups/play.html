@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>播放 · 第 1 集</title>
+<link rel="stylesheet" href="theme.css">
+</head>
+<body>
+<header class="topnav">
+  <div class="container topnav-inner">
+    <a href="browse.html" class="brand">红果鉴·Web</a>
+    <nav class="navtabs" aria-label="主导航">
+      <a class="navtab" href="browse.html">浏览</a>
+      <a class="navtab" href="#" title="等排行榜接口抓包后上线">排行榜<sup class="badge badge-outline" style="margin-left:4px">待抓包</sup></a>
+      <a class="navtab" href="downloads.html">下载队列</a>
+    </nav>
+    <div class="flex-1"></div>
+    <a href="search.html" class="btn btn-outline btn-sm topnav-search">🔍 搜索</a>
+    <button class="btn btn-outline btn-icon theme-toggle" onclick="guoToggleTheme()" aria-label="切换深浅主题">🌓</button>
+  </div>
+</header>
+
+<main class="container mt-4">
+  <a href="detail.html" class="muted text-sm">← 返回详情 · 宴律，你的白月光回国了</a>
+
+  <div class="flex gap-6 mt-4" style="align-items:flex-start;flex-wrap:wrap">
+    <!-- 播放器：随视频画面比例自适应（16:9 横屏 / 9:16 竖屏居中窄栏） -->
+    <div style="flex:1 1 560px;min-width:300px">
+      <div id="stage" style="width:100%;aspect-ratio:16/9;background:oklch(0.09 0 0);border-radius:var(--radius);overflow:hidden;position:relative;margin-inline:auto;transition:max-width .2s">
+        <!-- 弹幕层示意 -->
+        <div style="position:absolute;inset:0;color:#fff;font-size:16px;text-shadow:0 0 3px oklch(0 0 0/.9)" aria-hidden="true">
+          <div style="position:absolute;top:6%;left:100%;white-space:nowrap;animation:dm 8s linear infinite">男主眼神拉丝了啊啊啊</div>
+          <div style="position:absolute;top:15%;left:100%;white-space:nowrap;animation:dm 8s linear infinite .5s">这集封神</div>
+          <div style="position:absolute;top:24%;left:100%;white-space:nowrap;animation:dm 8s linear infinite 1.2s">前方高能</div>
+        </div>
+        <style>@keyframes dm{from{transform:translateX(0)}to{transform:translateX(-1400px)}}</style>
+        <!-- 中央播放/暂停 -->
+        <button class="btn btn-icon" style="position:absolute;inset:0;margin:auto;width:56px;height:56px;border-radius:999px;background:oklch(0 0 0/.55);color:#fff;font-size:20px" aria-label="播放/暂停">▶</button>
+        <!-- 底部控制条：弹幕开关收进条内（拇指可达，Fitts） -->
+        <div style="position:absolute;left:0;right:0;bottom:0;padding:10px 12px;background:linear-gradient(transparent,oklch(0 0 0/.7));color:#fff">
+          <div class="progress" style="height:4px;margin-bottom:8px"><div class="progress-bar" style="width:34%"></div></div>
+          <div class="flex items-center gap-2 text-xs" style="color:#fff;flex-wrap:wrap">
+            <span>03:32 / 10:24</span>
+            <span class="badge" style="background:oklch(0 0 0/.5);color:#fff;cursor:pointer" role="button" tabindex="0">弹幕 开</span>
+            <span class="badge" style="background:oklch(0 0 0/.5);color:#fff">1080p ▾</span>
+            <span class="badge" style="background:oklch(0 0 0/.5);color:#fff">线路 1/3</span>
+            <div class="flex-1"></div>
+            <span class="badge" style="background:oklch(0 0 0/.5);color:#fff;cursor:pointer" role="button" tabindex="0">下一集 →</span>
+          </div>
+        </div>
+      </div>
+      <!-- 原型演示：画面比例切换（真实实现按视频流自适应，无需手动） -->
+      <div class="flex items-center gap-2 mt-4">
+        <span class="text-xs muted">原型演示 · 画面比例：</span>
+        <button class="btn btn-sm btn-secondary" id="ratio169" aria-pressed="true">16:9 横屏</button>
+        <button class="btn btn-sm btn-outline" id="ratio916" aria-pressed="false">9:16 竖屏</button>
+        <span class="text-xs muted">实际实现按视频流自动适配</span>
+      </div>
+      <div class="text-xs muted mt-4">上一集 · <strong>第 1 集 · 正在播放</strong> · 下一集 →（上下键切集）</div>
+
+      <!-- 移动端：选集收纳在播放器下方 -->
+      <div class="card mt-4" style="padding:16px">
+        <div class="flex items-center justify-between mb-4">
+          <h2 class="text-lg font-semibold">选集</h2>
+          <button class="btn btn-sm btn-outline" onclick="location.href='downloads.html'">↓ 下载本集</button>
+        </div>
+        <div class="ep-grid">
+          <span class="ep-cell current" aria-current="true">1</span>
+          <a class="ep-cell" href="#">2</a><a class="ep-cell" href="#">3</a>
+          <a class="ep-cell" href="#">4</a><a class="ep-cell" href="#">5</a>
+          <a class="ep-cell" href="#">6</a><a class="ep-cell" href="#">7</a>
+          <a class="ep-cell" href="#">8</a><a class="ep-cell" href="#">9</a>
+          <a class="ep-cell" href="#">10</a><a class="ep-cell" href="#">11</a>
+          <a class="ep-cell" href="#">12</a><a class="ep-cell" href="#">13</a>
+          <a class="ep-cell" href="#">14</a><a class="ep-cell" href="#">15</a>
+          <a class="ep-cell" href="#">16</a><a class="ep-cell" href="#">17</a>
+          <a class="ep-cell" href="#">18</a><a class="ep-cell" href="#">19</a>
+          <a class="ep-cell" href="#">20</a>
+        </div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<nav class="tabbar" aria-label="底部导航">
+  <a class="tabbar-item" href="browse.html"><span>□</span>浏览</a>
+  <a class="tabbar-item" href="search.html"><span>🔍</span>搜索</a>
+  <a class="tabbar-item" href="downloads.html"><span>↓</span>下载</a>
+</nav>
+<script src="app.js"></script>
+<script>
+var stage = document.getElementById("stage"), b169 = document.getElementById("ratio169"), b916 = document.getElementById("ratio916");
+function setRatio(wide) {
+  if (wide) {
+    stage.style.aspectRatio = "16/9"; stage.style.maxWidth = "none";
+    b169.className = "btn btn-sm btn-secondary"; b169.setAttribute("aria-pressed","true");
+    b916.className = "btn btn-sm btn-outline"; b916.setAttribute("aria-pressed","false");
+  } else {
+    stage.style.aspectRatio = "9/16"; stage.style.maxWidth = "min(405px, 92vw)";
+    b916.className = "btn btn-sm btn-secondary"; b916.setAttribute("aria-pressed","true");
+    b169.className = "btn btn-sm btn-outline"; b169.setAttribute("aria-pressed","false");
+  }
+}
+b169.onclick = function(){ setRatio(true) };
+b916.onclick = function(){ setRatio(false) };
+</script>
+</body>
+</html>
