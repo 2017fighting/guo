@@ -14,12 +14,16 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io/fs"
 	"net/http"
 	"os"
+	"os/signal"
 	"strconv"
 	"strings"
+	"syscall"
+	"time"
 
 	"github.com/2017fighting/guo/internal/hongguo"
 	"github.com/2017fighting/guo/internal/hongguo/rankings"
@@ -144,15 +148,43 @@ func main() {
 		must(engine.DeleteJob(normalizeDramaID(args[0]), keep))
 		fmt.Println("deleted")
 	case "serve":
-		// Web 服务：API + 前端（web/dist 存在则伺服；embed 接线在容器化工单）
+		// Web 服务：API + 前端（web/dist 存在则伺服；embed 接线在容器化工单）。
+		// 引擎常驻：JobRunner 事件驱动排空队列（含断电重启续传），SSE 推队列事件。
 		var static fs.FS
 		if _, err := os.Stat("web/dist/index.html"); err == nil {
 			static = os.DirFS("web/dist")
 		}
 		addr := env("GUO_ADDR", ":8080")
-		srv := &server.Server{Catalog: source, Rankings: rankings.NewCache(rankings.NewClient(), st), Search: source, Settings: st, Static: static}
-		fmt.Fprintf(os.Stderr, "[guo] HTTP 服务已启动 %s（API /api/v1）\n", addr)
-		must(http.ListenAndServe(addr, srv.Handler()))
+
+		runner := pipeline.NewJobRunner(engine)
+		srv := &server.Server{
+			Catalog: source, Drama: source, Downloads: runner,
+			Rankings: rankings.NewCache(rankings.NewClient(), st), Search: source,
+			Settings: st, Static: static,
+		}
+		hub := server.NewEventHub(srv.QueueSnapshot)
+		srv.Events = hub
+		engine.OnEvent = hub.Signal
+
+		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+		defer stop()
+		runner.Start(ctx) // 启动即排空遗留队列（含 running 复位续传）
+
+		httpSrv := &http.Server{Addr: addr, Handler: srv.Handler()}
+		go func() {
+			<-ctx.Done()
+			fmt.Fprintln(os.Stderr, "[guo] 收到退出信号，正在收尾…")
+			shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			if err := httpSrv.Shutdown(shutdownCtx); err != nil {
+				fmt.Fprintf(os.Stderr, "[guo] HTTP 收尾超时: %v\n", err)
+			}
+		}()
+		fmt.Fprintf(os.Stderr, "[guo] HTTP 服务已启动 %s（API /api/v1，下载引擎常驻）\n", addr)
+		if err := httpSrv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			must(err)
+		}
+		runner.Stop() // 等在跑任务到分集边界退出
 	default:
 		usage()
 	}

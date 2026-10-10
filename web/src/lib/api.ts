@@ -52,3 +52,37 @@ export async function apiPut<T>(path: string, body: unknown): Promise<T> {
   })
   return unwrap<T>(resp)
 }
+
+// apiPost 带体写请求（建下载任务/控制动作）；错误解包与 api 同口径。
+export async function apiPost<T>(path: string, body?: unknown): Promise<T> {
+  const resp = await fetch(new URL(path, window.location.origin), {
+    method: 'POST',
+    headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  })
+  return unwrap<T>(resp)
+}
+
+// apiDelete 无响应体删除（204）；keepVideo 等参数走 query。
+export async function apiDelete(path: string, params?: Record<string, string>): Promise<void> {
+  const url = new URL(path, window.location.origin)
+  for (const [key, value] of Object.entries(params ?? {})) {
+    if (value !== '') url.searchParams.set(key, value)
+  }
+  const resp = await fetch(url, {
+    method: 'DELETE',
+    headers: { Accept: 'application/json' },
+  })
+  if (!resp.ok) {
+    let message = `请求失败（HTTP ${resp.status}）`
+    let hint = '请稍后重试'
+    try {
+      const body = (await resp.json()) as { message?: string; hint?: string }
+      if (body.message) message = body.message
+      if (body.hint) hint = body.hint
+    } catch {
+      // 非 JSON 错误体，保留默认文案
+    }
+    throw new ApiError(message, hint, resp.status)
+  }
+}

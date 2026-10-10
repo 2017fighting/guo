@@ -1,5 +1,5 @@
 // 应用外壳：顶部导航（浏览/排行榜/下载队列 + 搜索入口 + 主题切换）与
-// 移动端底部 Tab。下载页在后续工单接入路由时转正。
+// 移动端底部 Tab。
 
 import { Clapperboard, Download, LayoutGrid, Moon, Search, Settings, Sun, Trophy } from 'lucide-react'
 import type { ReactNode } from 'react'
@@ -18,13 +18,13 @@ interface NavItemSpec {
 const NAV_ITEMS: NavItemSpec[] = [
   { key: 'browse', label: '浏览', ready: true },
   { key: 'rankings', label: '排行榜', ready: true },
-  { key: 'downloads', label: '下载队列', ready: false },
+  { key: 'downloads', label: '下载队列', ready: true },
 ]
 
 const TABBAR_ITEMS: NavItemSpec[] = [
   { key: 'browse', label: '浏览', ready: true },
   { key: 'search', label: '搜索', ready: true },
-  { key: 'downloads', label: '下载', ready: false },
+  { key: 'downloads', label: '下载', ready: true },
   { key: 'rankings', label: '排行榜', ready: true },
 ]
 

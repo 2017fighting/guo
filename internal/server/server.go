@@ -10,6 +10,7 @@ import (
 
 	"github.com/2017fighting/guo/internal/hongguo"
 	"github.com/2017fighting/guo/internal/hongguo/rankings"
+	"github.com/2017fighting/guo/internal/pipeline"
 )
 
 // CatalogSource 目录数据源（*hongguo.Client 实现；接口让 handler 可测）。
@@ -26,11 +27,14 @@ type RankingsSource interface {
 // Server HTTP 入口。Static 为前端产物根（含 index.html，web/dist），
 // embed 接线在容器化工单完成；nil 表示仅 API。
 type Server struct {
-	Catalog  CatalogSource
-	Rankings RankingsSource
-	Search   SearchSource
-	Settings SettingsStore
-	Static   fs.FS
+	Catalog   CatalogSource
+	Drama     DramaSource         // 详情+分集（#11）
+	Downloads *pipeline.JobRunner // 下载队列（引擎+常驻执行器，#11）
+	Events    *EventHub           // SSE 队列事件（cmd serve 接线，#11）
+	Rankings  RankingsSource      // 8 榜单（#14）
+	Search    SearchSource        // 双通道搜索（#12）
+	Settings  SettingsStore       // 设置 KV（#15）
+	Static    fs.FS
 }
 
 // Handler 返回完整路由（API + 静态回落）。
