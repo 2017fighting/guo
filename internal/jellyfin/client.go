@@ -67,7 +67,9 @@ func (c *Client) Validate(ctx context.Context) error {
 // StatusError /System/Info 返回非 200 时携带上游状态码。
 type StatusError struct{ Status int }
 
-func (e *StatusError) Error() string { return fmt.Sprintf("jellyfin: /System/Info status %d", e.Status) }
+func (e *StatusError) Error() string {
+	return fmt.Sprintf("jellyfin: /System/Info status %d", e.Status)
+}
 
 // RefreshAsync 异步触发全库刷新（POST /Library/Refresh），立即返回。
 // 未配置时为空操作；失败只上报 OnError。

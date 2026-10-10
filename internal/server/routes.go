@@ -7,6 +7,7 @@ import "net/http"
 func (s *Server) routes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/catalog", s.handleCatalog)
 	mux.HandleFunc("GET /api/v1/catalog/filters", s.handleCatalogFilters)
+	mux.HandleFunc("GET /api/v1/rankings", s.handleRankings)
 
 	// 详情与下载队列（#11）
 	mux.HandleFunc("GET /api/v1/drama/{seriesID}", s.handleDrama)
@@ -18,6 +19,9 @@ func (s *Server) routes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/v1/downloads/{jobID}/retry", s.handleDownloadControl("retry"))
 	mux.HandleFunc("DELETE /api/v1/downloads/{jobID}", s.handleDownloadDelete)
 	mux.HandleFunc("GET /api/v1/events", s.handleEvents)
+
+	mux.HandleFunc("GET /api/v1/search", s.handleSearch)
+	mux.HandleFunc("GET /api/v1/search/suggest", s.handleSearchSuggest)
 
 	mux.HandleFunc("GET /api/v1/settings", s.handleSettingsGet)
 	mux.HandleFunc("PUT /api/v1/settings", s.handleSettingsPut)

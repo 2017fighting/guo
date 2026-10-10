@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"github.com/2017fighting/guo/internal/hongguo"
+	"github.com/2017fighting/guo/internal/hongguo/rankings"
 	"github.com/2017fighting/guo/internal/jellyfin"
 	"github.com/2017fighting/guo/internal/pipeline"
 	"github.com/2017fighting/guo/internal/server"
@@ -156,7 +157,11 @@ func main() {
 		addr := env("GUO_ADDR", ":8080")
 
 		runner := pipeline.NewJobRunner(engine)
-		srv := &server.Server{Catalog: source, Drama: source, Downloads: runner, Settings: st, Static: static}
+		srv := &server.Server{
+			Catalog: source, Drama: source, Downloads: runner,
+			Rankings: rankings.NewCache(rankings.NewClient(), st), Search: source,
+			Settings: st, Static: static,
+		}
 		hub := server.NewEventHub(srv.QueueSnapshot)
 		srv.Events = hub
 		engine.OnEvent = hub.Signal

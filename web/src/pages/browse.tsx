@@ -232,7 +232,7 @@ export function BrowsePage() {
         </Card>
       ) : (
         <>
-          <PosterWall items={visible} />
+          <PosterWall items={visible} hrefFor={(item) => `/drama/${item.series_id}`} />
           <div ref={sentinelRef} className="h-1" aria-hidden />
           <div className="flex justify-center py-6">
             {loadingMore ? (

@@ -5,12 +5,16 @@ import { BrowsePage } from '@/pages/browse'
 import { DownloadsPage } from '@/pages/downloads'
 import { DramaPage } from '@/pages/detail'
 import { PlayPage } from '@/pages/play'
+import { RankingsPage } from '@/pages/rankings'
+import { SearchPage } from '@/pages/search'
 import { SettingsPage } from '@/pages/settings'
 
 // 路由表（后续 lane 各加一行 <Route>）；导航高亮按当前路径推导。
 const NAV_BY_PATH: Record<string, NavKey> = {
   '/': 'browse',
   '/downloads': 'downloads',
+  '/rankings': 'rankings',
+  '/search': 'search',
   '/settings': 'settings',
 }
 
@@ -24,7 +28,11 @@ function ShellRoutes() {
         <Route path="/drama/:seriesID" element={<DramaPage />} />
         <Route path="/downloads" element={<DownloadsPage />} />
         <Route path="/play/:seriesID/:vid" element={<PlayPage />} />
+        <Route path="/rankings" element={<RankingsPage />} />
+        <Route path="/search" element={<SearchPage />} />
         <Route path="/settings" element={<SettingsPage />} />
+        {/* 未接入路由暂回落浏览页，对应 lane 合入后自然接上 */}
+        <Route path="*" element={<BrowsePage />} />
       </Routes>
     </AppShell>
   )
