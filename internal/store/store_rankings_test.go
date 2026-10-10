@@ -59,4 +59,3 @@ func TestRankingsCacheDifferentOffsets(t *testing.T) {
 		t.Fatalf("未写入的 offset 应 ErrNotFound，实际 %v", err)
 	}
 }
-

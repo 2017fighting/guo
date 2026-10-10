@@ -127,7 +127,7 @@ func boardPageBody(items []map[string]any, next int, hasMore bool, session, rank
 	return marshal(map[string]any{
 		"code": 0, "message": "SUCCESS",
 		"data": map[string]any{
-			"cell_view": map[string]any{"cell_data": cells, "show_type": 505},
+			"cell_view":   map[string]any{"cell_data": cells, "show_type": 505},
 			"next_offset": strconv.Itoa(next), "has_more": hasMore,
 			"session_id": session, "rank_version": rankVersion,
 		},
@@ -139,7 +139,7 @@ func rankItem(id, title, rank, heat string) map[string]any {
 		"series_id": id, "title": title, "cover": "//p3.example.test/" + id + ".jpg",
 		"video_desc": title + " 的简介", "vertical": true, "episode_cnt": json.Number("84"),
 		"play_cnt": json.Number("2218691"), "score": json.Number("8.1"),
-		"recommend_info": `{"rank":"` + rank + `","gid":"1"}`,
+		"recommend_info":      `{"rank":"` + rank + `","gid":"1"}`,
 		"secondary_info_list": []any{map[string]any{"content": heat, "data_type": 1}},
 	}
 }

@@ -136,7 +136,7 @@ func deviceParams(id api3Identity) map[string]string {
 		"device_type": "sdk_gphone64_arm64", "device_brand": "google", "language": "en",
 		"os_api": "33", "os_version": "13", "manifest_version_code": "73970",
 		"resolution": "1080*2209", "dpi": "420", "update_version_code": "73970",
-		"_rticket": strconv.FormatInt(time.Now().UnixMilli(), 10),
+		"_rticket":                  strconv.FormatInt(time.Now().UnixMilli(), 10),
 		"normal_session_cnt_in_day": "16", "gender": "2", "cold_start_session_cnt_in_day": "8",
 		"host_abi": "arm64-v8a", "dragon_device_type": "phone", "sys_mini_window": "1",
 		"pv_player": "73970", "app_mini_window": "0", "normal_session_id": id.NormalSessionID,
@@ -146,7 +146,7 @@ func deviceParams(id api3Identity) map[string]string {
 		"battery_pct": "100", "down_speed": "30000", "sys_dark_mode": "0",
 		"need_personal_recommend": "1", "player_so_load": "1", "font_scale": "100",
 		"is_android_pad_screen": "0", "network_type": "4",
-		"rom_version":      "sdk_gphone64_arm64-userdebug 13 TE1A.240213.009 12342917 dev-keys",
+		"rom_version":    "sdk_gphone64_arm64-userdebug 13 TE1A.240213.009 12342917 dev-keys",
 		"current_volume": "33", "cdid": id.CDID,
 		// recommend_extra = base64({"recent_dislike_gid":[],"session_app_stay_time":0}\n)
 		"recommend_extra": "eyJyZWNlbnRfZGlzbGlrZV9naWQiOltdLCJzZXNzaW9uX2FwcF9zdGF5X3RpbWUiOjB9\n",

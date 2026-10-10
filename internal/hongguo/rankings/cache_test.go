@@ -40,8 +40,8 @@ func (f *fakeSource) Board(ctx context.Context, boardID string, offset int, curs
 
 func boardPageForTest() *BoardPage {
 	return &BoardPage{
-		Items:       []Item{{SeriesID: "7101", Title: "剧一", Rank: 1, Heat: "100万热度"}},
-		Offset:      10, SessionID: "sess-1", FilterIDs: []string{"7101"},
+		Items:  []Item{{SeriesID: "7101", Title: "剧一", Rank: 1, Heat: "100万热度"}},
+		Offset: 10, SessionID: "sess-1", FilterIDs: []string{"7101"},
 		RankVersion: "1791603600", HasMore: true,
 	}
 }

@@ -1,5 +1,5 @@
 // 应用外壳：顶部导航（浏览/排行榜/下载队列 + 搜索入口 + 主题切换）与
-// 移动端底部 Tab。下载/搜索页在后续工单接入路由时转正。
+// 移动端底部 Tab。下载页在后续工单接入路由时转正。
 
 import { Clapperboard, Download, LayoutGrid, Moon, Search, Settings, Sun, Trophy } from 'lucide-react'
 import type { ReactNode } from 'react'
@@ -12,27 +12,33 @@ export type NavKey = 'browse' | 'rankings' | 'downloads' | 'search' | 'settings'
 interface NavItemSpec {
   key: NavKey
   label: string
-  to?: string // 就绪项的路由目标
+  ready: boolean
 }
 
 const NAV_ITEMS: NavItemSpec[] = [
-  { key: 'browse', label: '浏览', to: '/' },
-  { key: 'rankings', label: '排行榜', to: '/rankings' },
-  { key: 'downloads', label: '下载队列' },
+  { key: 'browse', label: '浏览', ready: true },
+  { key: 'rankings', label: '排行榜', ready: true },
+  { key: 'downloads', label: '下载队列', ready: false },
 ]
 
 const TABBAR_ITEMS: NavItemSpec[] = [
-  { key: 'browse', label: '浏览', to: '/' },
-  { key: 'search', label: '搜索' },
-  { key: 'downloads', label: '下载' },
-  { key: 'rankings', label: '排行榜', to: '/rankings' },
+  { key: 'browse', label: '浏览', ready: true },
+  { key: 'search', label: '搜索', ready: true },
+  { key: 'downloads', label: '下载', ready: false },
+  { key: 'rankings', label: '排行榜', ready: true },
 ]
 
+/** 已上线页面的导航目标；后续 lane 在此各加一行。 */
+const NAV_HREF: Record<NavKey, string> = {
+  browse: '/',
+  search: '/search',
+  rankings: '/rankings',
+  downloads: '/downloads',
+  settings: '/settings',
+}
+
 function TopNavItem({ spec, active }: { spec: NavItemSpec; active: boolean }) {
-  const className = `inline-flex min-h-11 items-center rounded-lg px-3 font-medium ${
-    active ? 'bg-accent text-foreground' : 'text-muted-foreground hover:text-foreground'
-  }`
-  if (!spec.to) {
+  if (!spec.ready) {
     return (
       <span
         className="inline-flex min-h-11 items-center rounded-lg px-3 text-muted-foreground opacity-60"
@@ -43,7 +49,13 @@ function TopNavItem({ spec, active }: { spec: NavItemSpec; active: boolean }) {
     )
   }
   return (
-    <Link aria-current={active ? 'page' : undefined} className={className} to={spec.to}>
+    <Link
+      to={NAV_HREF[spec.key]}
+      aria-current={active ? 'page' : undefined}
+      className={`inline-flex min-h-11 items-center rounded-lg px-3 font-medium ${
+        active ? 'bg-accent text-foreground' : 'text-muted-foreground hover:text-foreground'
+      }`}
+    >
       {spec.label}
     </Link>
   )
@@ -65,16 +77,11 @@ export function AppShell({ active, children }: { active: NavKey; children: React
             ))}
           </nav>
           <div className="flex-1" />
-          <Button
-            variant="outline"
-            size="sm"
-            className="hidden md:inline-flex"
-            aria-label="搜索"
-            title="即将上线"
-            disabled
-          >
-            <Search data-icon="inline-start" aria-hidden />
-            搜索
+          <Button variant="outline" size="sm" className="hidden md:inline-flex" asChild>
+            <Link to="/search" aria-label="搜索" aria-current={active === 'search' ? 'page' : undefined}>
+              <Search data-icon="inline-start" aria-hidden />
+              搜索
+            </Link>
           </Button>
           <Button
             variant="outline"
@@ -114,27 +121,30 @@ export function AppShell({ active, children }: { active: NavKey; children: React
                   : LayoutGrid
           const className = `flex min-h-14 flex-1 flex-col items-center justify-center gap-0.5 text-xs ${
             activeTab ? 'font-medium text-foreground' : 'text-muted-foreground'
-          } ${spec.to ? '' : 'opacity-60'}`
+          } ${spec.ready ? '' : 'opacity-60'}`
           const content = (
             <>
               <Icon className="size-5" aria-hidden />
               {spec.label}
             </>
           )
-          return spec.to ? (
+          if (!spec.ready) {
+            return (
+              <span key={spec.key} title="即将上线" className={className}>
+                {content}
+              </span>
+            )
+          }
+          return (
             <Link
               key={spec.key}
-              to={spec.to}
+              to={NAV_HREF[spec.key]}
               aria-current={activeTab ? 'page' : undefined}
               title={spec.label}
               className={className}
             >
               {content}
             </Link>
-          ) : (
-            <span key={spec.key} aria-current={activeTab ? 'page' : undefined} title="即将上线" className={className}>
-              {content}
-            </span>
           )
         })}
       </nav>

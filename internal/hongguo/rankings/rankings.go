@@ -38,11 +38,12 @@ const planTTL = 10 * time.Minute
 // 直接采用上游榜单 selector_item_id；Tab 为换榜请求的外层 tab（selected_items）。
 //
 // 8 榜 → 上游 38 板 taxonomy 映射（plan cell_selector，guoapp-reference §5.5）：
-//   全站 5 榜取「全部(all)」族：热门=ranklist_hot_sc(推荐榜)、热播=ranklist_hot_play_sc、
-//   口碑=ranklist_prestige(臻果榜)、上新=ranklist_new_rank_sc(新剧榜)、必看=ranklist_must_watch；
-//   真人热播=human_hot_play（真人剧族 tab=human）；
-//   漫剧热榜=comic_series_hot_rank（漫剧族 tab=comic_series_rank）；
-//   AI 热门=ai_playlet_hot_sc（AI 剧族 tab=ai_playlet）。
+//
+//	全站 5 榜取「全部(all)」族：热门=ranklist_hot_sc(推荐榜)、热播=ranklist_hot_play_sc、
+//	口碑=ranklist_prestige(臻果榜)、上新=ranklist_new_rank_sc(新剧榜)、必看=ranklist_must_watch；
+//	真人热播=human_hot_play（真人剧族 tab=human）；
+//	漫剧热榜=comic_series_hot_rank（漫剧族 tab=comic_series_rank）；
+//	AI 热门=ai_playlet_hot_sc（AI 剧族 tab=ai_playlet）。
 type Board struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
@@ -160,11 +161,11 @@ type Client struct {
 
 	identity api3Identity
 
-	mu       sync.Mutex
-	plan     *planResult
-	planAt   time.Time
-	planErr  error
-	nowTTL   time.Duration // 测试可缩短 plan 缓存
+	mu      sync.Mutex
+	plan    *planResult
+	planAt  time.Time
+	planErr error
+	nowTTL  time.Duration // 测试可缩短 plan 缓存
 }
 
 // NewClient 创建榜单客户端（新设备身份）。
