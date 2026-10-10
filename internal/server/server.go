@@ -21,6 +21,7 @@ type CatalogSource interface {
 // embed 接线在容器化工单完成；nil 表示仅 API。
 type Server struct {
 	Catalog CatalogSource
+	Search  SearchSource
 	Static  fs.FS
 }
 

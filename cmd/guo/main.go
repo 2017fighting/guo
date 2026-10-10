@@ -143,7 +143,7 @@ func main() {
 			static = os.DirFS("web/dist")
 		}
 		addr := env("GUO_ADDR", ":8080")
-		srv := &server.Server{Catalog: source, Static: static}
+		srv := &server.Server{Catalog: source, Search: source, Static: static}
 		fmt.Fprintf(os.Stderr, "[guo] HTTP 服务已启动 %s（API /api/v1）\n", addr)
 		must(http.ListenAndServe(addr, srv.Handler()))
 	default:

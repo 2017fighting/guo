@@ -38,19 +38,23 @@ func searchText(s string) string {
 	return b.String()
 }
 
+// ErrKeywordInvalid 关键词校验未过（空/超长/控制字符）。
+// server 层据此映射 400，其余错误一律按上游故障处理。
+var ErrKeywordInvalid = errors.New("关键词不合适")
+
 // searchKeyword 关键词校验（guoapp hongguoSearchKeyword）：
 // NFKC + trim，1..80 字符，拒绝控制字符。
 func searchKeyword(q string) (string, error) {
 	q = strings.TrimSpace(norm.NFKC.String(q))
 	if q == "" {
-		return "", errors.New("关键词为空")
+		return "", fmt.Errorf("%w: 关键词为空", ErrKeywordInvalid)
 	}
 	if n := len([]rune(q)); n > 80 {
-		return "", errors.New("关键词超过 80 字")
+		return "", fmt.Errorf("%w: 关键词超过 80 字", ErrKeywordInvalid)
 	}
 	for _, r := range q {
 		if unicode.IsControl(r) {
-			return "", errors.New("关键词含控制字符")
+			return "", fmt.Errorf("%w: 关键词含控制字符", ErrKeywordInvalid)
 		}
 	}
 	return q, nil
