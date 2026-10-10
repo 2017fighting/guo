@@ -104,6 +104,17 @@ type Engine struct {
 	OnEvent func()
 	// progress 实时进度与 Jellyfin 刷新标记（零值可用）。
 	progress progressTracker
+
+	// SettingsLookup 非空时引擎热读取设置：每次领取任务前读并发上限、
+	// 每个分集导出前读 ASS 开关（设置页保存后即时生效，不重启进程）。
+	// 为空则退回静态字段（CLI 一次性启动口径）。
+	SettingsLookup func() HotSettings
+}
+
+// HotSettings 引擎热读取的设置子集（cmd/guo serve 从 settings 表供值）。
+type HotSettings struct {
+	Concurrency int
+	ASSExport   bool
 }
 
 // IPhoneUA 媒体与页面请求共用 UA（对齐 guoapp mediaRequestHeaders）。
@@ -124,11 +135,33 @@ func truncateErr(msg string) string {
 	return string(runes[:limit]) + "…"
 }
 
+// maxConcurrency 全局并发上限（#7 决议：可配 1–6）。
+const maxConcurrency = 6
+
 func (e *Engine) concurrency() int {
-	if e.Concurrency <= 0 {
+	if e.SettingsLookup != nil {
+		if n := e.SettingsLookup().Concurrency; n > 0 {
+			return clampConcurrency(n)
+		}
+	}
+	return clampConcurrency(e.Concurrency) // <=0 时钳为默认 2
+}
+func (e *Engine) assExport() bool {
+	if e.SettingsLookup != nil {
+		return e.SettingsLookup().ASSExport
+	}
+	return e.ASSExport
+}
+
+// clampConcurrency 钳到 1–6（#7 决议；<=0 视为未配置取默认 2）。
+func clampConcurrency(n int) int {
+	if n <= 0 {
 		return 2
 	}
-	return e.Concurrency
+	if n > maxConcurrency {
+		return maxConcurrency
+	}
+	return n
 }
 func (e *Engine) maxRetries() int {
 	if e.MaxRetries <= 0 {
@@ -215,28 +248,38 @@ func (e *Engine) AddJob(ctx context.Context, seriesID string, indexes []int, qua
 }
 
 // Run 排空一次队列：并发拉起至多 Concurrency 个可运行任务，全部终态后返回。
+// Run 排空一次队列：并发拉起任务，全部终态后返回。
+// 每次领取任务前热读取并发上限（SettingsLookup 非空时设置页保存后
+// 下一次领取即生效；改动不抢占进行中的分集，与暂停同理）。
 func (e *Engine) Run(ctx context.Context) error {
 	jobs, err := e.Store.ListJobs()
 	if err != nil {
 		return err
 	}
-	sem := make(chan struct{}, e.concurrency())
 	var wg sync.WaitGroup
+	released := make(chan struct{}, maxConcurrency) // 任务结束投递额度信号
+	inflight := 0                                   // 仅主循环读写
 	for i := range jobs {
 		j := jobs[i]
 		if j.Status != store.JobQueued && j.Status != store.JobFailed {
 			continue
 		}
-		select {
-		case sem <- struct{}{}:
-		case <-ctx.Done():
-			wg.Wait()
-			return ctx.Err()
+		for inflight >= e.concurrency() {
+			select {
+			case <-released:
+				inflight--
+			case <-time.After(200 * time.Millisecond):
+				// 等待期间上限可能被调大，重读一次再试
+			case <-ctx.Done():
+				wg.Wait()
+				return ctx.Err()
+			}
 		}
+		inflight++
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			defer func() { <-sem }()
+			defer func() { released <- struct{}{} }()
 			if err := e.runJob(ctx, j.ID); err != nil {
 				e.log(fmt.Sprintf("任务 %d 失败: %v", j.ID, err))
 			}
@@ -403,7 +446,7 @@ func (e *Engine) processEpisode(ctx context.Context, job *store.Job, index int, 
 		return err
 	}
 
-	if e.ASSExport && stream.DurationMS > 0 {
+	if e.assExport() && stream.DurationMS > 0 {
 		if comments, derr := e.Source.DanmakuAll(ctx, seriesID, vid, stream.DurationMS); derr == nil && len(comments) > 0 {
 			if err := atomicWrite(epLayout.ASS(), ass.Convert(comments, ass.Options{})); err != nil {
 				e.log(fmt.Sprintf("分集 %d 弹幕导出失败: %v", index, err))

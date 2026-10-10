@@ -25,6 +25,7 @@ type Server struct {
 	Drama     DramaSource         // 详情+分集（#11）
 	Downloads *pipeline.JobRunner // 下载队列（引擎+常驻执行器，#11）
 	Events    *EventHub           // SSE 队列事件（cmd serve 接线，#11）
+	Settings  SettingsStore       // 设置 KV（#15）
 	Static    fs.FS
 }
 
