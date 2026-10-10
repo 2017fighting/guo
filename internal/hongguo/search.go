@@ -16,6 +16,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 	"unicode"
 
@@ -334,7 +335,7 @@ func (c *Client) fetchSuggestionRecords(ctx context.Context, query string, count
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-			return nil, fmt.Errorf("联想接口 HTTP %d", resp.StatusCode)
+		return nil, fmt.Errorf("联想接口 HTTP %d", resp.StatusCode)
 	}
 	var result map[string]any
 	dec := json.NewDecoder(io.LimitReader(resp.Body, maxBodyBytes))
@@ -347,4 +348,164 @@ func (c *Client) fetchSuggestionRecords(ctx context.Context, query string, count
 		list, _ = nestedMap(result, "data")["suggest_list"].([]any)
 	}
 	return mapList(list), nil
+}
+
+// ---- 双通道搜索（官网 SSR 搜索页 + 名称索引） ----
+
+// SearchResult 搜索响应：合并去重后的剧卡 + 降级警告。
+type SearchResult struct {
+	Query    string        `json:"query"`    // NFKC+trim 后的关键词回显
+	Items    []CatalogItem `json:"items"`    // 相关性排序后的合并结果
+	Limited  bool          `json:"limited"`  // 官网搜索页只返回了部分结果（totalCount > 返回条数）
+	Warnings []string      `json:"warnings"` // 单通道降级提示（空数组 = 无）
+}
+
+const searchPageBudget = 12 * time.Second
+
+// Search 双通道搜索：名称索引（联想端点 count=50 只取 short_play_name）+
+// 官网 SSR 搜索页，按 series_id 合并去重后相关性排序。单通道失败降级带警告，
+// 双通道全挂才报错。防抖由前端负责。
+func (c *Client) Search(ctx context.Context, query string) (*SearchResult, error) {
+	kw, err := searchKeyword(query)
+	if err != nil {
+		return nil, err
+	}
+	var (
+		wg       sync.WaitGroup
+		names    []CatalogItem
+		namesErr error
+		page     []CatalogItem
+		limited  bool
+		pageErr  error
+	)
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		names, namesErr = c.searchNames(ctx, kw)
+	}()
+	go func() {
+		defer wg.Done()
+		page, limited, pageErr = c.searchPage(ctx, kw)
+	}()
+	wg.Wait()
+
+	if namesErr != nil && pageErr != nil {
+		return nil, fmt.Errorf("官网搜索页: %v；名称索引: %v", pageErr, namesErr)
+	}
+	warnings := make([]string, 0, 2)
+	if pageErr != nil {
+		warnings = append(warnings, "红果综合搜索暂不可用，已只显示名称索引结果")
+	} else if namesErr != nil {
+		warnings = append(warnings, "名称检索暂不可用，已只显示官网搜索结果")
+	}
+	merged := mergeCatalogItems(names, page)
+	return &SearchResult{
+		Query:    kw,
+		Items:    rankSearchItems(merged, kw),
+		Limited:  limited,
+		Warnings: warnings,
+	}, nil
+}
+
+// searchNames 名称索引通道：联想端点 count=50，只取 word_type==short_play_name
+// 且剧卡 series_id 为数字的记录（video_data 即完整剧卡）。
+func (c *Client) searchNames(ctx context.Context, kw string) ([]CatalogItem, error) {
+	ctx, cancel := context.WithTimeout(ctx, suggestBudget)
+	defer cancel()
+	records, err := c.fetchSuggestionRecords(ctx, kw, namesCount)
+	if err != nil {
+		return nil, err
+	}
+	items := make([]CatalogItem, 0, len(records))
+	for _, rec := range records {
+		if mapString(rec, "word_type") != "short_play_name" {
+			continue
+		}
+		if item, ok := catalogItemFromCard(rec); ok {
+			items = append(items, item)
+		}
+	}
+	return items, nil
+}
+
+// searchPage 官网 SSR 搜索页通道（无分页，一次全量）。
+// 要求 isSuccess=true 且 query 回显一致；Limited = totalCount > 条目数。
+func (c *Client) searchPage(ctx context.Context, kw string) ([]CatalogItem, bool, error) {
+	ctx, cancel := context.WithTimeout(ctx, searchPageBudget)
+	defer cancel()
+	body, err := c.fetchWeb(ctx, "/search/"+url.PathEscape(kw))
+	if err != nil {
+		return nil, false, err
+	}
+	page := routerLoaderMap(parseRouterData(body), "search_(keyword)/page", "search_")
+	if !mapBool(page, "isSuccess") || mapString(page, "query") != kw {
+		return nil, false, errors.New("红果综合搜索页返回异常")
+	}
+	rows := anyList(page["searchList"])
+	items := make([]CatalogItem, 0, len(rows))
+	for _, row := range rows {
+		if item, ok := catalogItemFromCard(row); ok {
+			items = append(items, item)
+		}
+	}
+	total, _ := strconv.Atoi(mapString(page, "totalCount"))
+	return items, total > len(items), nil
+}
+
+// mergeCatalogItems 按 series_id 合并去重：后到的字段只补已有卡的空缺，
+// 新剧追加在后（guoapp mergeHongguoSearchDramas）。
+func mergeCatalogItems(first, later []CatalogItem) []CatalogItem {
+	merged := make([]CatalogItem, 0, len(first)+len(later))
+	merged = append(merged, first...)
+	index := make(map[string]int, len(merged))
+	for i, it := range merged {
+		index[it.SeriesID] = i
+	}
+	for _, it := range later {
+		if j, ok := index[it.SeriesID]; ok {
+			merged[j] = mergeCatalogItem(merged[j], it)
+			continue
+		}
+		index[it.SeriesID] = len(merged)
+		merged = append(merged, it)
+	}
+	return merged
+}
+
+// mergeCatalogItem 后到的卡 merge 进已有卡：逐字段补空缺，不覆盖已有值。
+func mergeCatalogItem(a, b CatalogItem) CatalogItem {
+	if a.Title == "" {
+		a.Title = b.Title
+	}
+	if a.Cover == "" {
+		a.Cover = b.Cover
+	}
+	if a.EpisodeCount == "" {
+		a.EpisodeCount = b.EpisodeCount
+	}
+	if a.Status == "" {
+		a.Status = b.Status
+	}
+	if a.Heat == "" {
+		a.Heat = b.Heat
+	}
+	if a.PlayCount == "" {
+		a.PlayCount = b.PlayCount
+	}
+	if a.OnlineDate == "" {
+		a.OnlineDate = b.OnlineDate
+	}
+	if !a.Vertical {
+		a.Vertical = b.Vertical
+	}
+	if !a.VIP {
+		a.VIP = b.VIP
+	}
+	if a.Category == "" {
+		a.Category = b.Category
+	}
+	if len(a.Tags) == 0 {
+		a.Tags = b.Tags
+	}
+	return a
 }

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -92,10 +93,10 @@ func TestSearchRankSortsByRelevance(t *testing.T) {
 	// 查询「月光 穿书」归一为「月光穿书」，前缀/包含均按整串判定：
 	items := []CatalogItem{
 		{SeriesID: "3", Title: "穿书后我成了反派的白月光"}, // rank 3（分词全包含，非连续）
-		{SeriesID: "2", Title: "关于月光穿书这件事"},      // rank 2（包含）
-		{SeriesID: "4", Title: "霸总的千金妻"},             // rank 4（其他）
-		{SeriesID: "1", Title: "月光穿书之后"},             // rank 1（前缀）
-		{SeriesID: "0", Title: "月光穿书"},                // rank 0（精确）
+		{SeriesID: "2", Title: "关于月光穿书这件事"},    // rank 2（包含）
+		{SeriesID: "4", Title: "霸总的千金妻"},       // rank 4（其他）
+		{SeriesID: "1", Title: "月光穿书之后"},       // rank 1（前缀）
+		{SeriesID: "0", Title: "月光穿书"},         // rank 0（精确）
 	}
 	got := rankSearchItems(items, "月光 穿书")
 	var order []string
@@ -272,5 +273,202 @@ func TestSuggestInvalidKeyword(t *testing.T) {
 	c := NewClient()
 	if _, err := c.Suggest(context.Background(), "  "); err == nil {
 		t.Fatal("空关键词应报错")
+	}
+}
+
+// ---- 双通道搜索（guoapp-reference §3.1） ----
+
+// searchPageHTML 构造官网 SSR 搜索页（内嵌 _ROUTER_DATA）。
+func searchPageHTML(loaderKey string, query string, isSuccess bool, totalCount int, rows ...map[string]any) string {
+	list := make([]any, 0, len(rows))
+	for _, r := range rows {
+		list = append(list, r)
+	}
+	page := map[string]any{
+		"isSuccess":  isSuccess,
+		"query":      query,
+		"searchList": list,
+		"totalCount": totalCount,
+	}
+	data := map[string]any{"loaderData": map[string]any{loaderKey: page}}
+	encoded, _ := json.Marshal(data)
+	return "<!DOCTYPE html><script>window._ROUTER_DATA = " + string(encoded) + ";</script>"
+}
+
+// searchRow SSR 搜索页条目（searchList[] 行，含 video_data 剧卡）。
+func searchRow(id, title, heat string) map[string]any {
+	card := map[string]any{
+		"series_id_str": id,
+		"series_title":  title,
+		"series_cover":  "//p.test/" + id + ".jpg",
+		"episode_cnt":   "76",
+		"series_status": "1",
+	}
+	if heat != "" {
+		card["hot_score_data"] = map[string]any{"score": heat}
+	}
+	return map[string]any{"video_data": card}
+}
+
+func TestSearchDualChannelMergeDedupeRank(t *testing.T) {
+	var suggestCount, pageHits int
+	c := newWebTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/incent_resource/suggestion":
+			suggestCount, _ = strconv.Atoi(r.URL.Query().Get("count"))
+			// 名称索引：count=50；只取 short_play_name 且数字 series_id
+			json.NewEncoder(w).Encode(suggestResponse(
+				suggestRecordFixture("白月光", "short_play_name", "700001"),
+				suggestRecordFixture("穿书后我成了反派的白月光", "short_play_name", "700003"),
+				suggestRecordFixture("无关联想", "actor_name", ""),        // 非 short_play_name → 忽略
+				suggestRecordFixture("坏记录", "short_play_name", "abc"), // 非数字 series_id → 忽略
+			))
+		case "/search/白月光":
+			pageHits++
+			if r.Header.Get("Referer") == "" || r.Header.Get("User-Agent") == "" {
+				t.Errorf("搜索页请求缺 UA/Referer")
+			}
+			// 同剧 700001：名称通道缺热度，后到的页面卡补齐；另带新剧 700002
+			w.Write([]byte(searchPageHTML("search_(keyword)/page", "白月光", true, 5,
+				searchRow("700001", "白月光", "120000000"),
+				searchRow("700002", "白月光她不装了", ""),
+			)))
+		default:
+			t.Errorf("意外请求: %s", r.URL.Path)
+		}
+	})
+
+	res, err := c.Search(context.Background(), " 白月光 ")
+	if err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+	if suggestCount != 50 {
+		t.Fatalf("名称索引 count = %d, want 50", suggestCount)
+	}
+	if pageHits != 1 {
+		t.Fatalf("搜索页命中 = %d, want 1", pageHits)
+	}
+	if len(res.Items) != 3 {
+		t.Fatalf("合并后条目 = %d, want 3（按 series_id 去重）", len(res.Items))
+	}
+	// 排序：700001 精确(0) < 700002 前缀(1) < 700003 包含(2)（页面通道的 700002 排到名称通道 700003 前）
+	wantOrder := []string{"700001", "700002", "700003"}
+	for i, id := range wantOrder {
+		if res.Items[i].SeriesID != id {
+			t.Fatalf("排序[%d] = %s, want %s", i, res.Items[i].SeriesID, id)
+		}
+	}
+	// 后到的页面卡只补空缺：700001 热度补齐、封面保持名称通道值
+	if res.Items[0].Heat == "" || res.Items[0].Cover == "" {
+		t.Fatalf("合并未补空缺: %+v", res.Items[0])
+	}
+	if !res.Limited {
+		t.Fatal("totalCount(5) > 条目数(2) 时应标记 limited")
+	}
+	if len(res.Warnings) != 0 {
+		t.Fatalf("不应有警告: %v", res.Warnings)
+	}
+	if res.Query != "白月光" {
+		t.Fatalf("query 回显 = %q", res.Query)
+	}
+}
+
+func TestSearchLoaderKeyFallback(t *testing.T) {
+	// loader 键带关键词后缀（search_白月光/page）也能命中前缀匹配
+	c := newWebTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/incent_resource/suggestion" {
+			json.NewEncoder(w).Encode(suggestResponse())
+			return
+		}
+		w.Write([]byte(searchPageHTML("search_白月光/page", "白月光", true, 1,
+			searchRow("700001", "白月光", ""))))
+	})
+	res, err := c.Search(context.Background(), "白月光")
+	if err != nil || len(res.Items) != 1 {
+		t.Fatalf("loader 前缀匹配失败: res=%+v err=%v", res, err)
+	}
+}
+
+func TestSearchPageChannelFailsDegradesToNames(t *testing.T) {
+	c := newWebTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/incent_resource/suggestion" {
+			json.NewEncoder(w).Encode(suggestResponse(
+				suggestRecordFixture("白月光", "short_play_name", "700001")))
+			return
+		}
+		http.Error(w, "boom", http.StatusInternalServerError)
+	})
+	res, err := c.Search(context.Background(), "白月光")
+	if err != nil {
+		t.Fatalf("搜索页挂不应整体报错: %v", err)
+	}
+	if len(res.Items) != 1 || res.Items[0].SeriesID != "700001" {
+		t.Fatalf("应保留名称索引结果: %+v", res.Items)
+	}
+	if len(res.Warnings) != 1 || !strings.Contains(res.Warnings[0], "综合搜索") {
+		t.Fatalf("应有降级警告: %v", res.Warnings)
+	}
+	if res.Limited {
+		t.Fatal("页面通道失败时不应 limited")
+	}
+}
+
+func TestSearchNamesChannelFailsDegradesToPage(t *testing.T) {
+	c := newWebTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/incent_resource/suggestion" {
+			http.Error(w, "boom", http.StatusInternalServerError)
+			return
+		}
+		w.Write([]byte(searchPageHTML("search_(keyword)/page", "白月光", true, 1,
+			searchRow("700001", "白月光", ""))))
+	})
+	res, err := c.Search(context.Background(), "白月光")
+	if err != nil {
+		t.Fatalf("名称索引挂不应整体报错: %v", err)
+	}
+	if len(res.Items) != 1 || res.Items[0].SeriesID != "700001" {
+		t.Fatalf("应保留搜索页结果: %+v", res.Items)
+	}
+	if len(res.Warnings) != 1 || !strings.Contains(res.Warnings[0], "名称检索") {
+		t.Fatalf("应有降级警告: %v", res.Warnings)
+	}
+}
+
+func TestSearchPageQueryMismatchFailsChannel(t *testing.T) {
+	// isSuccess=false 或 query 不匹配 → 该通道按失败降级
+	c := newWebTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/incent_resource/suggestion" {
+			json.NewEncoder(w).Encode(suggestResponse(
+				suggestRecordFixture("白月光", "short_play_name", "700001")))
+			return
+		}
+		w.Write([]byte(searchPageHTML("search_(keyword)/page", "别的词", true, 1,
+			searchRow("700001", "白月光", ""))))
+	})
+	res, err := c.Search(context.Background(), "白月光")
+	if err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+	if len(res.Items) != 1 {
+		t.Fatalf("应降级到名称索引: %+v", res.Items)
+	}
+	if len(res.Warnings) == 0 {
+		t.Fatal("query 不匹配应有警告")
+	}
+}
+
+func TestSearchBothChannelsFail(t *testing.T) {
+	c := newWebTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "boom", http.StatusInternalServerError)
+	})
+	if _, err := c.Search(context.Background(), "白月光"); err == nil {
+		t.Fatal("双通道全挂应报错")
+	}
+}
+
+func TestSearchInvalidKeyword(t *testing.T) {
+	c := NewClient()
+	if _, err := c.Search(context.Background(), strings.Repeat("剧", 81)); err == nil {
+		t.Fatal("超长关键词应报错")
 	}
 }
