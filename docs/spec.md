@@ -102,10 +102,10 @@ web/               新增：React 前端
 | 里程碑 | 内容 | 状态 |
 |---|---|---|
 | M1 下载管线 | internal/* + CLI + 真机验证 | ✅ 完成 |
-| M2 Web 骨架 | server 包（API 全量）+ JobRunner 常驻化 + SSE | ⬜ |
-| M3 前端五页 | React 骨架 + 浏览/搜索/详情/队列（对接 API） | ⬜ |
-| M4 播放与榜单 | 播放页（流代理+hls/video+弹幕 Canvas）+ 排行榜 8 榜页 | ⬜ |
-| M5 容器化收官 | Dockerfile/compose/ghcr CI + 部署文档 + 端到端验收 | ⬜ |
+| M2 Web 骨架 | server 包（API 全量）+ JobRunner 常驻化 + SSE | ✅ 完成（#10–#12/#14/#15） |
+| M3 前端五页 | React 骨架 + 浏览/搜索/详情/队列（对接 API） | ✅ 完成（含设置页） |
+| M4 播放与榜单 | 播放页（流代理+hls/video+弹幕 Canvas）+ 排行榜 8 榜页 | ✅ 完成 |
+| M5 容器化收官 | Dockerfile/compose/ghcr CI + 部署文档 + 端到端验收 | ✅ 完成（容器内真网络 E2E） |
 
 ## 13. 界外与后续工作（不做于本规格）
 
