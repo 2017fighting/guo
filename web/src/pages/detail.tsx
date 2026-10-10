@@ -6,6 +6,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import { LoaderCircle, Play, Download } from 'lucide-react'
 import { api, apiPost, ApiError } from '@/lib/api'
 import { episodeGroupAt, episodeGroups, episodesInGroup } from '@/lib/episode-groups'
+import { EpisodeGroupTabs } from '@/components/episode-group-tabs'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Modal } from '@/components/modal'
@@ -141,10 +142,10 @@ export function DramaPage() {
         </CardContent>
       </Card>
 
-      {/* 选集：分组 50/组，格 ≥44px */}
+      {/* 选集：分组 50/组，格 ≥44px；分组 tab 单行横向滚动，激活组自动滚入视野 */}
       <Card className="mt-4 py-4">
         <CardContent className="px-4">
-          <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
             <h2 className="text-lg font-semibold">
               选集{' '}
               {currentGroup && (
@@ -153,20 +154,11 @@ export function DramaPage() {
                 </span>
               )}
             </h2>
-            <div className="flex gap-2">
-              {groups.map((g) => (
-                <Button
-                  key={g.start}
-                  size="sm"
-                  variant={g.start === currentGroup?.start ? 'secondary' : 'outline'}
-                  onClick={() => setGroupStart(g.start)}
-                >
-                  {g.start === g.end ? `${g.start}` : `${g.start}–${g.end}`}
-                </Button>
-              ))}
-            </div>
           </div>
-          <div className="grid grid-cols-[repeat(auto-fill,minmax(44px,1fr))] gap-2">
+          <div className="mb-3">
+            <EpisodeGroupTabs groups={groups} active={currentGroup} onSelect={setGroupStart} />
+          </div>
+          <div className="grid max-h-[340px] grid-cols-[repeat(auto-fill,minmax(44px,1fr))] gap-2 overflow-y-auto">
             {groupEpisodes.map((ep) => (
               <Link
                 key={ep.index}
