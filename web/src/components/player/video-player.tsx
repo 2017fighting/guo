@@ -4,7 +4,16 @@
 
 import { useEffect, useRef, useState } from 'react'
 import type HlsType from 'hls.js'
-import { LoaderCircle, MessageSquareOff, MessageSquareText, Play, SkipForward } from 'lucide-react'
+import {
+  LoaderCircle,
+  Maximize2,
+  MessageSquareOff,
+  MessageSquareText,
+  Minimize2,
+  Play,
+  RotateCcw,
+  SkipForward,
+} from 'lucide-react'
 import { api, ApiError } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { DanmakuOverlay } from '@/components/player/danmaku-overlay'
@@ -61,8 +70,11 @@ export function VideoPlayer({
   const [danmakuOn, setDanmakuOn] = useState(true)
   const [danmakuItems, setDanmakuItems] = useState<DanmakuItem[]>([])
   const [danmakuError, setDanmakuError] = useState(false)
+  const [atEnd, setAtEnd] = useState(false) // 最后一集播完：停在结尾，可重播
+  const [fullscreen, setFullscreen] = useState(false)
 
   const videoRef = useRef<HTMLVideoElement>(null)
+  const containerRef = useRef<HTMLDivElement>(null)
   const hlsRef = useRef<HlsType | null>(null)
   const pendingSeekRef = useRef<number | null>(null)
   const prevVidRef = useRef('')
@@ -77,6 +89,7 @@ export function VideoPlayer({
     setPhase('loading')
     setError(null)
     setDanmakuItems([])
+    setAtEnd(false)
     windowsRef.current.clear()
     api<StreamInfo>(`/api/v1/drama/${seriesID}/episodes/${vid}/stream`, {
       line: line || undefined,
@@ -117,6 +130,8 @@ export function VideoPlayer({
           hlsRef.current = hls
           hls.loadSource(url)
           hls.attachMedia(video)
+          // 自动开播：被浏览器自动播放策略拒绝时暂停态中央按钮接管（点击即播）
+          void video.play().catch(() => undefined)
           hls.on(Hls.Events.ERROR, (_event, data) => {
             if (!data.fatal) return
             // 清单拉挂/不是 HLS → 回退直连（可能是普通 MP4）
@@ -129,6 +144,8 @@ export function VideoPlayer({
         }
       }
       video.src = url
+      // 自动开播：同上，拒绝时由中央按钮兜底
+      void video.play().catch(() => undefined)
     }
     void attach()
     return () => {
@@ -198,6 +215,31 @@ export function VideoPlayer({
     else video.pause()
   }
 
+  // 最后一集播完重播：回开头续播
+  const replay = () => {
+    const video = videoRef.current
+    if (!video) return
+    video.currentTime = 0
+    void video.play().catch(() => undefined)
+  }
+
+  // 全屏：对播放器容器（含弹幕层与控制条）切换；fullscreenchange 同步图标
+  const toggleFullscreen = async () => {
+    const el = containerRef.current
+    if (!el) return
+    try {
+      if (document.fullscreenElement) await document.exitFullscreen()
+      else await el.requestFullscreen()
+    } catch {
+      // 全屏切换被拒（罕见）：保持现状
+    }
+  }
+  useEffect(() => {
+    const onChange = () => setFullscreen(Boolean(document.fullscreenElement))
+    document.addEventListener('fullscreenchange', onChange)
+    return () => document.removeEventListener('fullscreenchange', onChange)
+  }, [])
+
   if (phase === 'error') {
     return (
       <div className="flex aspect-video w-full items-center justify-center rounded-lg bg-black">
@@ -224,9 +266,12 @@ export function VideoPlayer({
 
   return (
     <div
+      ref={containerRef}
       className={cn(
         'relative mx-auto overflow-hidden rounded-lg bg-black',
         vertical ? 'aspect-[9/16] w-full max-w-[min(405px,92vw)]' : 'aspect-video w-full',
+        // 全屏时去掉比例/限宽约束，铺满屏幕（:fullscreen 标准 API，Chrome/Android 范围内）
+        '[&:fullscreen]:aspect-auto [&:fullscreen]:max-w-none [&:fullscreen]:rounded-none',
       )}
     >
       <video
@@ -250,22 +295,29 @@ export function VideoPlayer({
           if (video.duration && Number.isFinite(video.duration)) setDurationMS(video.duration * 1000)
         }}
         onTimeUpdate={(e) => setTimeMS(e.currentTarget.currentTime * 1000)}
-        onPlay={() => setPlaying(true)}
+        onPlay={() => {
+          setPlaying(true)
+          setAtEnd(false)
+        }}
         onPause={() => setPlaying(false)}
-        onEnded={onNext}
+        onEnded={() => {
+          // 播完：有下一集自动连播；最后一集停在结尾，中央按钮变重播
+          if (hasNext) onNext()
+          else setAtEnd(true)
+        }}
       />
 
       <DanmakuOverlay items={danmakuItems} timeMS={timeMS} enabled={danmakuOn} />
 
-      {/* 中央播放/暂停（暂停时可见） */}
+      {/* 中央播放/暂停（暂停时可见；最后一集播完变重播） */}
       {!playing && phase === 'ready' && (
         <button
           type="button"
-          aria-label="播放/暂停"
-          className="absolute inset-0 m-auto flex size-14 items-center justify-center rounded-full bg-black/55 text-white"
-          onClick={togglePlay}
+          aria-label={atEnd ? '重播' : '播放/暂停'}
+          className="absolute inset-0 z-10 m-auto flex size-14 items-center justify-center rounded-full bg-black/55 text-white"
+          onClick={atEnd ? replay : togglePlay}
         >
-          <Play className="size-6" aria-hidden />
+          {atEnd ? <RotateCcw className="size-6" aria-hidden /> : <Play className="size-6" aria-hidden />}
         </button>
       )}
       {phase === 'loading' && (
@@ -292,7 +344,8 @@ export function VideoPlayer({
             if (video) video.currentTime = Number(e.target.value)
           }}
         />
-        <div className="mt-1.5 flex flex-wrap items-center gap-2 text-xs">
+        {/* 控制件单行不换行（窄屏横向滑动，隐藏滚动条），避免换行堆高遮挡画面/中央按钮 */}
+        <div className="mt-1.5 flex flex-nowrap items-center gap-2 overflow-x-auto overflow-y-hidden pb-0.5 text-xs [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           <span className="tabular-nums">
             {fmtClock(timeMS)} / {fmtClock(durationMS)}
           </span>
@@ -363,6 +416,20 @@ export function VideoPlayer({
           >
             <SkipForward className="size-3.5" aria-hidden />
             下一集
+          </button>
+          <button
+            type="button"
+            className="flex items-center gap-1 rounded bg-black/50 px-2 py-0.5 hover:bg-black/70"
+            aria-label={fullscreen ? '退出全屏' : '全屏'}
+            aria-pressed={fullscreen}
+            onClick={() => void toggleFullscreen()}
+          >
+            {fullscreen ? (
+              <Minimize2 className="size-3.5" aria-hidden />
+            ) : (
+              <Maximize2 className="size-3.5" aria-hidden />
+            )}
+            全屏
           </button>
         </div>
       </div>

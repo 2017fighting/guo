@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"regexp"
 	"sort"
 	"strconv"
 	"time"
@@ -120,13 +121,23 @@ func dramaFromCard(m map[string]any) pipeline.DramaMeta {
 	return meta
 }
 
+// normalizeCover 封面规范化：协议补全 + reading-sign 签名 HEIC 重写。
+// pN-reading-sign.fqnovelpic.com 的封面带 x-signature 签名且为 HEIC，浏览器
+// 无法渲染；同图的 pN-novel.byteimg.com 渠道可按 Accept 内容协商出 jpeg/webp
+// （detail/search 通道即此形态），故把 <hash>~tplv-…:400:0.heic?… 重写为
+// <hash>~tplv-shrink:640:0.image（去查询串）。非该域封面原样返回。
+var signedHeicCover = regexp.MustCompile(`^https?://p(\d+)-reading-sign\.fqnovelpic\.com/novel-pic/([^~/?#]+)~`)
+
 func normalizeCover(u string) string {
 	if u == "" {
 		return ""
 	}
 	// 协议补全：//xxx → https://xxx
 	if len(u) >= 2 && u[:2] == "//" {
-		return "https:" + u
+		u = "https:" + u
+	}
+	if m := signedHeicCover.FindStringSubmatch(u); m != nil {
+		return fmt.Sprintf("https://p%s-novel.byteimg.com/novel-pic/%s~tplv-shrink:640:0.image", m[1], m[2])
 	}
 	return u
 }

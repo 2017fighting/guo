@@ -447,9 +447,19 @@ func heatText(card map[string]any) string {
 	return first
 }
 
+// normalizeCover 封面规范化：协议补全 + reading-sign 签名 HEIC 重写。
+// pN-reading-sign.fqnovelpic.com 封面带签名且为 HEIC，浏览器无法渲染；
+// 同图 pN-novel.byteimg.com 渠道可内容协商出 jpeg/webp，故重写为
+// <hash>~tplv-shrink:640:0.image（去查询串）。与 hongguo 包 normalizeCover
+// 同口径（rankings 包独立，内联实现）。
+var signedHeicCover = regexp.MustCompile(`^https?://p(\d+)-reading-sign\.fqnovelpic\.com/novel-pic/([^~/?#]+)~`)
+
 func normalizeCover(cover string) string {
 	if strings.HasPrefix(cover, "//") {
-		return "https:" + cover
+		cover = "https:" + cover
+	}
+	if m := signedHeicCover.FindStringSubmatch(cover); m != nil {
+		return fmt.Sprintf("https://p%s-novel.byteimg.com/novel-pic/%s~tplv-shrink:640:0.image", m[1], m[2])
 	}
 	return cover
 }

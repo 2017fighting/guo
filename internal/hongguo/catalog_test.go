@@ -317,6 +317,64 @@ func TestCatalogRetriesWithEmptySession(t *testing.T) {
 
 // ---- 卡片规范化变体（landpage/rankings 两族键名兼容） ----
 
+// ---- 封面规范化：reading-sign 签名 HEIC 重写（v1.0.1 封面不渲染修复） ----
+
+func TestNormalizeCoverRewritesSignedHeic(t *testing.T) {
+	cases := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{
+			name: "带查询串的签名 HEIC 重写为 byteimg image",
+			in:   "https://p3-reading-sign.fqnovelpic.com/novel-pic/c7a1000~tplv-uv-t:400:0.heic?lk3s=1f3d20f0&x-expires=1736000000&x-signature=abcDEF",
+			want: "https://p3-novel.byteimg.com/novel-pic/c7a1000~tplv-shrink:640:0.image",
+		},
+		{
+			name: "p6 同序号重写",
+			in:   "https://p6-reading-sign.fqnovelpic.com/novel-pic/9b2f~tplv-obj:400:0.heic?x-signature=q",
+			want: "https://p6-novel.byteimg.com/novel-pic/9b2f~tplv-shrink:640:0.image",
+		},
+		{
+			name: "已是 byteimg image 不动",
+			in:   "https://p9-novel.byteimg.com/novel-pic/c7a1000~tplv-shrink:640:0.image",
+			want: "https://p9-novel.byteimg.com/novel-pic/c7a1000~tplv-shrink:640:0.image",
+		},
+		{
+			name: "其他域名不动",
+			in:   "https://p3-reading.fqnovelpic.com/novel-pic/c7a1000~tplv-x:400:0.heic?lk3s=1",
+			want: "https://p3-reading.fqnovelpic.com/novel-pic/c7a1000~tplv-x:400:0.heic?lk3s=1",
+		},
+		{
+			name: "空串",
+			in:   "",
+			want: "",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := normalizeCover(tc.in); got != tc.want {
+				t.Fatalf("normalizeCover(%q) = %q, want %q", tc.in, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestCatalogItemFromCardRewritesSignedHeicCover(t *testing.T) {
+	item, ok := catalogItemFromCard(map[string]any{
+		"series_id_str": "700020",
+		"series_title":  "签名图剧",
+		"series_cover":  "https://p3-reading-sign.fqnovelpic.com/novel-pic/ab12~tplv-uv-t:400:0.heic?lk3s=x&x-signature=y",
+	})
+	if !ok {
+		t.Fatal("card should parse")
+	}
+	want := "https://p3-novel.byteimg.com/novel-pic/ab12~tplv-shrink:640:0.image"
+	if item.Cover != want {
+		t.Fatalf("cover = %q, want %q", item.Cover, want)
+	}
+}
+
 func TestCatalogItemFromCardVariants(t *testing.T) {
 	cases := []struct {
 		name string

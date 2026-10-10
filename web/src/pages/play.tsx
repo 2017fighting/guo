@@ -13,6 +13,7 @@ import { VideoPlayer } from '@/components/player/video-player'
 import type { DramaDetail } from '@/types/drama'
 import type { DownloadJob } from '@/types/downloads'
 import { episodeGroupAt, episodeGroups } from '@/lib/episode-groups'
+import { EpisodeGroupTabs } from '@/components/episode-group-tabs'
 
 export function PlayPage() {
   const { seriesID = '', vid = '' } = useParams()
@@ -91,8 +92,14 @@ export function PlayPage() {
     }
   }
 
+  // 选集分组：默认跟随正在播放的集所在组；点 tab 手动切组（播放集换组时重回跟随）
   const groups = episodeGroups(episodes.length)
-  const currentGroup = episodeGroupAt(groups, currentIndex + 1) ?? groups[0]
+  const playingGroup = episodeGroupAt(groups, currentIndex + 1) ?? groups[0]
+  const [groupStart, setGroupStart] = useState<number | null>(null)
+  useEffect(() => {
+    setGroupStart(null)
+  }, [playingGroup?.start])
+  const currentGroup = (groupStart != null ? episodeGroupAt(groups, groupStart) : undefined) ?? playingGroup
 
   return (
     <div>
@@ -155,6 +162,11 @@ export function PlayPage() {
               </Button>
             </div>
           </div>
+          {groups.length > 0 && (
+            <div className="mb-3">
+              <EpisodeGroupTabs groups={groups} active={currentGroup} onSelect={setGroupStart} />
+            </div>
+          )}
           {detailError ? (
             <p className="py-2 text-sm text-muted-foreground">{detailError}</p>
           ) : episodes.length === 0 ? (
