@@ -3,6 +3,7 @@
 
 import { Clapperboard, Download, LayoutGrid, Moon, Search, Settings, Sun } from 'lucide-react'
 import type { ReactNode } from 'react'
+import { Link } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { useTheme } from '@/components/theme-provider'
 
@@ -91,9 +92,9 @@ export function AppShell({ active, children }: { active: NavKey; children: React
             aria-current={active === 'settings' ? 'page' : undefined}
             asChild
           >
-            <a href="/settings">
+            <Link to="/settings">
               <Settings aria-hidden />
-            </a>
+            </Link>
           </Button>
         </div>
       </header>
