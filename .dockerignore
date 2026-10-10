@@ -1,0 +1,19 @@
+# 构建上下文瘦身：镜像构建不需要的本地/文档/产物
+.git
+.github
+.pi
+.scratch
+.jellyfin
+.ssh
+docs
+mockups
+media
+*.db
+*.db-wal
+*.db-shm
+guo
+guo-*
+node_modules
+web/node_modules
+# web/dist 由阶段 1 在镜像内重建（避免把宿主机陈旧产物 embed 进二进制）
+web/dist

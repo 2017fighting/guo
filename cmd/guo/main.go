@@ -20,6 +20,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"syscall"
@@ -31,6 +32,7 @@ import (
 	"github.com/2017fighting/guo/internal/pipeline"
 	"github.com/2017fighting/guo/internal/server"
 	"github.com/2017fighting/guo/internal/store"
+	"github.com/2017fighting/guo/web"
 )
 
 func env(key, def string) string {
@@ -148,12 +150,10 @@ func main() {
 		must(engine.DeleteJob(normalizeDramaID(args[0]), keep))
 		fmt.Println("deleted")
 	case "serve":
-		// Web 服务：API + 前端（web/dist 存在则伺服；embed 接线在容器化工单）。
+		// Web 服务：API + 前端。前端来源见 staticFS——磁盘 web/dist（开发模式，
+		// pnpm build 热替换）优先，否则用编译期 embed（go build -tags embed，容器镜像走这条路）。
 		// 引擎常驻：JobRunner 事件驱动排空队列（含断电重启续传），SSE 推队列事件。
-		var static fs.FS
-		if _, err := os.Stat("web/dist/index.html"); err == nil {
-			static = os.DirFS("web/dist")
-		}
+		static := staticFS("web/dist", web.Dist())
 		addr := env("GUO_ADDR", ":8080")
 
 		runner := pipeline.NewJobRunner(engine)
@@ -189,6 +189,15 @@ func main() {
 	default:
 		usage()
 	}
+}
+
+// staticFS 选择 serve 的前端来源：磁盘上的构建产物（开发模式，pnpm build 热替换）
+// 优先，不存在则回落编译期 embed 的前端（nil = 两者皆无，不伺服静态资源）。
+func staticFS(diskRoot string, embedded fs.FS) fs.FS {
+	if _, err := os.Stat(filepath.Join(diskRoot, "index.html")); err == nil {
+		return os.DirFS(diskRoot)
+	}
+	return embedded
 }
 
 func mustArg(args []string, n int, usageLine string) {
