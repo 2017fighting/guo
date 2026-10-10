@@ -99,12 +99,30 @@ type Engine struct {
 	Jellyfin    *jellyfin.Client
 	HTTP        *http.Client
 	Log         func(string)
+
+	// OnEvent 队列可见变化（状态跃迁/进度心跳）回调；常驻模式接 SSE，nil=静默。
+	OnEvent func()
+	// progress 实时进度与 Jellyfin 刷新标记（零值可用）。
+	progress progressTracker
 }
 
 // IPhoneUA 媒体与页面请求共用 UA（对齐 guoapp mediaRequestHeaders）。
 const IPhoneUA = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1"
 
 const metaKeyCENC = "cenc_key"
+
+// metaKeyError 分集最近一次失败原因（episode_meta，供队列页展示出路）。
+const metaKeyError = "last_error"
+
+// truncateErr 失败原因入库截断（人话展示用，不存堆栈长文）。
+func truncateErr(msg string) string {
+	const limit = 300
+	runes := []rune(msg)
+	if len(runes) <= limit {
+		return msg
+	}
+	return string(runes[:limit]) + "…"
+}
 
 func (e *Engine) concurrency() int {
 	if e.Concurrency <= 0 {
@@ -192,6 +210,7 @@ func (e *Engine) AddJob(ctx context.Context, seriesID string, indexes []int, qua
 			e.log(fmt.Sprintf("fanart 跳过: %v", err))
 		}
 	}
+	e.emitEvent()
 	return job, nil
 }
 
@@ -235,6 +254,8 @@ func (e *Engine) runJob(ctx context.Context, jobID int64) error {
 	if err := e.Store.SetJobStatus(jobID, store.JobRunning); err != nil {
 		return err
 	}
+	e.emitEvent()
+	defer e.clearLive(jobID)
 	eps, err := e.Store.Episodes(jobID)
 	if err != nil {
 		return err
@@ -244,10 +265,17 @@ func (e *Engine) runJob(ctx context.Context, jobID int64) error {
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
-		// 暂停即停（分集边界）
+		// 暂停即停（分集边界）；任务被删也停
 		fresh, _ := e.jobByID(jobID)
-		if fresh != nil && fresh.Status == store.JobPaused {
+		if fresh == nil {
+			e.log(fmt.Sprintf("任务 %d 已删除，停止处理", jobID))
+			e.clearLive(jobID)
+			return nil
+		}
+		if fresh.Status == store.JobPaused {
 			e.log(fmt.Sprintf("任务 %d 已暂停", jobID))
+			e.clearLive(jobID)
+			e.emitEvent()
 			return nil
 		}
 		if ep.Status == store.EpDone {
@@ -266,6 +294,12 @@ func (e *Engine) runJob(ctx context.Context, jobID int64) error {
 				break forAttempt
 			} else {
 				e.log(fmt.Sprintf("分集 %d 第 %d 次尝试失败: %v", ep.Index, attempt+1, perr))
+				if errors.Is(perr, store.ErrNotFound) {
+					// 任务已被删除：立即收手，不占用重试退避
+					e.clearLive(jobID)
+					return nil
+				}
+				_ = e.Store.SaveEpisodeMeta(jobID, ep.Index, metaKeyError, truncateErr(perr.Error()))
 				_ = e.Store.SetEpisodeStatus(jobID, ep.Index, store.EpFailed)
 				if latest, lerr := e.Store.Episodes(jobID); lerr == nil {
 					for _, fe := range latest {
@@ -286,13 +320,21 @@ func (e *Engine) runJob(ctx context.Context, jobID int64) error {
 		}
 	}
 	if anyFailed {
-		return e.Store.SetJobStatus(jobID, store.JobFailed)
+		if err := e.Store.SetJobStatus(jobID, store.JobFailed); err != nil {
+			return err
+		}
+		e.clearLive(jobID)
+		e.emitEvent()
+		return nil
 	}
 	if err := e.Store.SetJobStatus(jobID, store.JobDone); err != nil {
 		return err
 	}
+	e.clearLive(jobID)
+	e.emitEvent()
 	if e.Jellyfin != nil {
 		e.Jellyfin.RefreshAsync() // 整剧完成触发一次（#7 决议）
+		e.progress.markJellyfin(jobID)
 	}
 	return nil
 }
@@ -321,6 +363,8 @@ func (e *Engine) processEpisode(ctx context.Context, job *store.Job, index int, 
 	if err := e.Store.SetEpisodeStatus(job.ID, index, store.EpDownloading); err != nil {
 		return err
 	}
+	e.setLive(job.ID, index, 0, 0)
+	e.emitEvent()
 
 	stream, err := e.Source.ResolveStream(ctx, seriesID, vid, job.Quality)
 	if err != nil {
@@ -341,6 +385,7 @@ func (e *Engine) processEpisode(ctx context.Context, job *store.Job, index int, 
 	if err := e.Store.SetEpisodeStatus(job.ID, index, store.EpMerging); err != nil {
 		return err
 	}
+	e.emitEvent()
 	args := ffmpegArgs(stream.CENCKeyHex, epLayout.Part(), epLayout.Video())
 	if err := e.FFMpeg.Run(ctx, args...); err != nil {
 		return fmt.Errorf("ffmpeg: %w", err)
@@ -367,7 +412,22 @@ func (e *Engine) processEpisode(ctx context.Context, job *store.Job, index int, 
 			e.log(fmt.Sprintf("分集 %d 弹幕拉取跳过: %v", index, derr))
 		}
 	}
-	return e.Store.SetEpisodeStatus(job.ID, index, store.EpDone)
+	if err := e.Store.SetEpisodeStatus(job.ID, index, store.EpDone); err != nil {
+		return err
+	}
+	e.emitEvent()
+	return nil
+}
+
+// setLive 更新任务实时进度（下载心跳处节流调用）。
+func (e *Engine) setLive(jobID int64, index int, downloaded int64, speed float64) {
+	e.progress.setLive(LiveInfo{
+		JobID: jobID, EpisodeIndex: index, Downloaded: downloaded, Speed: speed, At: time.Now(),
+	})
+}
+
+func (e *Engine) clearLive(jobID int64) {
+	e.progress.clearLive(jobID)
 }
 
 // ffmpegArgs 构造解密合并命令（docs/research/hongguo-protocol.md §6.5）：
@@ -394,7 +454,7 @@ func (e *Engine) download(ctx context.Context, stream *Stream, partPath string,
 	jobID int64, index int, seriesID, vid string, quality int) (*Stream, error) {
 	var err error
 	for attempt := 0; attempt < 2; attempt++ {
-		err = e.downloadOnce(ctx, stream, partPath)
+		err = e.downloadOnce(ctx, stream, partPath, jobID, index)
 		if err == nil {
 			return stream, nil
 		}
@@ -416,7 +476,7 @@ func (e *Engine) download(ctx context.Context, stream *Stream, partPath string,
 
 var errURLExpired = errors.New("stream url expired (403/410)")
 
-func (e *Engine) downloadOnce(ctx context.Context, stream *Stream, partPath string) error {
+func (e *Engine) downloadOnce(ctx context.Context, stream *Stream, partPath string, jobID int64, index int) error {
 	f, err := os.OpenFile(partPath, os.O_CREATE|os.O_RDWR, 0o644)
 	if err != nil {
 		return err
@@ -454,11 +514,43 @@ func (e *Engine) downloadOnce(ctx context.Context, stream *Stream, partPath stri
 		if err := f.Truncate(0); err != nil {
 			return err
 		}
+		offset = 0
 	default:
 		return fmt.Errorf("media status %d", resp.StatusCode)
 	}
-	_, err = io.Copy(f, resp.Body)
-	return err
+	// 分块拷贝 + 每 500ms 心跳：更新实时进度（速度近端窗口）并触发队列事件
+	const heartbeat = 500 * time.Millisecond
+	buf := make([]byte, 64<<10)
+	var total int64 // 本次新增字节（不含续传基线）
+	lastBeat := time.Now()
+	lastBytes := offset
+	for {
+		n, rerr := resp.Body.Read(buf)
+		if n > 0 {
+			if _, werr := f.Write(buf[:n]); werr != nil {
+				return werr
+			}
+			total += int64(n)
+		}
+		now := time.Now()
+		if now.Sub(lastBeat) >= heartbeat {
+			dt := now.Sub(lastBeat).Seconds()
+			if dt > 0 {
+				e.setLive(jobID, index, offset+total, float64(offset+total-lastBytes)/dt)
+			}
+			e.emitEvent()
+			lastBeat, lastBytes = now, offset+total
+		}
+		if rerr == io.EOF {
+			return nil
+		}
+		if rerr != nil {
+			return rerr
+		}
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+	}
 }
 
 func (e *Engine) fetchImage(ctx context.Context, url, dst string) error {
@@ -492,9 +584,23 @@ func atomicWrite(path string, data []byte) error {
 	return os.Rename(tmp, path)
 }
 
-// PauseJob / ResumeJob / RetryJob / DeleteJob 任务控制。
-func (e *Engine) PauseJob(jobID int64) error  { return e.Store.SetJobStatus(jobID, store.JobPaused) }
-func (e *Engine) ResumeJob(jobID int64) error { return e.Store.SetJobStatus(jobID, store.JobQueued) }
+// PauseJob / ResumeJob / RetryJob / DeleteJob 任务控制（变更即发队列事件）。
+func (e *Engine) PauseJob(jobID int64) error {
+	if err := e.Store.SetJobStatus(jobID, store.JobPaused); err != nil {
+		return err
+	}
+	e.emitEvent()
+	return nil
+}
+
+func (e *Engine) ResumeJob(jobID int64) error {
+	if err := e.Store.SetJobStatus(jobID, store.JobQueued); err != nil {
+		return err
+	}
+	e.emitEvent()
+	return nil
+}
+
 func (e *Engine) RetryJob(jobID int64) error {
 	eps, err := e.Store.Episodes(jobID)
 	if err != nil {
@@ -507,7 +613,11 @@ func (e *Engine) RetryJob(jobID int64) error {
 			}
 		}
 	}
-	return e.Store.SetJobStatus(jobID, store.JobQueued)
+	if err := e.Store.SetJobStatus(jobID, store.JobQueued); err != nil {
+		return err
+	}
+	e.emitEvent()
+	return nil
 }
 
 // DeleteJob 删除任务；keepVideo=true 时保留已合并的视频与全部产物。
@@ -522,5 +632,10 @@ func (e *Engine) DeleteJob(dramaID string, keepVideo bool) error {
 			return err
 		}
 	}
-	return e.Store.DeleteJob(dramaID)
+	if err := e.Store.DeleteJob(dramaID); err != nil {
+		return err
+	}
+	e.clearLive(job.ID)
+	e.emitEvent()
+	return nil
 }
