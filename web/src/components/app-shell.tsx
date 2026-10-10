@@ -1,7 +1,7 @@
 // 应用外壳：顶部导航（浏览/排行榜/下载队列 + 搜索入口 + 主题切换）与
-// 移动端底部 Tab。排行榜/下载/搜索页在后续工单接入路由时转正。
+// 移动端底部 Tab。下载/搜索页在后续工单接入路由时转正。
 
-import { Clapperboard, Download, LayoutGrid, Moon, Search, Settings, Sun } from 'lucide-react'
+import { Clapperboard, Download, LayoutGrid, Moon, Search, Settings, Sun, Trophy } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
@@ -12,23 +12,27 @@ export type NavKey = 'browse' | 'rankings' | 'downloads' | 'search' | 'settings'
 interface NavItemSpec {
   key: NavKey
   label: string
-  ready: boolean
+  to?: string // 就绪项的路由目标
 }
 
 const NAV_ITEMS: NavItemSpec[] = [
-  { key: 'browse', label: '浏览', ready: true },
-  { key: 'rankings', label: '排行榜', ready: false },
-  { key: 'downloads', label: '下载队列', ready: false },
+  { key: 'browse', label: '浏览', to: '/' },
+  { key: 'rankings', label: '排行榜', to: '/rankings' },
+  { key: 'downloads', label: '下载队列' },
 ]
 
 const TABBAR_ITEMS: NavItemSpec[] = [
-  { key: 'browse', label: '浏览', ready: true },
-  { key: 'search', label: '搜索', ready: false },
-  { key: 'downloads', label: '下载', ready: false },
+  { key: 'browse', label: '浏览', to: '/' },
+  { key: 'search', label: '搜索' },
+  { key: 'downloads', label: '下载' },
+  { key: 'rankings', label: '排行榜', to: '/rankings' },
 ]
 
 function TopNavItem({ spec, active }: { spec: NavItemSpec; active: boolean }) {
-  if (!spec.ready) {
+  const className = `inline-flex min-h-11 items-center rounded-lg px-3 font-medium ${
+    active ? 'bg-accent text-foreground' : 'text-muted-foreground hover:text-foreground'
+  }`
+  if (!spec.to) {
     return (
       <span
         className="inline-flex min-h-11 items-center rounded-lg px-3 text-muted-foreground opacity-60"
@@ -39,14 +43,9 @@ function TopNavItem({ spec, active }: { spec: NavItemSpec; active: boolean }) {
     )
   }
   return (
-    <span
-      aria-current={active ? 'page' : undefined}
-      className={`inline-flex min-h-11 items-center rounded-lg px-3 font-medium ${
-        active ? 'bg-accent text-foreground' : 'text-muted-foreground hover:text-foreground'
-      }`}
-    >
+    <Link aria-current={active ? 'page' : undefined} className={className} to={spec.to}>
       {spec.label}
-    </span>
+    </Link>
   )
 }
 
@@ -105,18 +104,36 @@ export function AppShell({ active, children }: { active: NavKey; children: React
       >
         {TABBAR_ITEMS.map((spec) => {
           const activeTab = spec.key === active
-          const Icon = spec.key === 'search' ? Search : spec.key === 'downloads' ? Download : LayoutGrid
-          return (
-            <span
-              key={spec.key}
-              aria-current={activeTab ? 'page' : undefined}
-              title={spec.ready ? spec.label : '即将上线'}
-              className={`flex min-h-14 flex-1 flex-col items-center justify-center gap-0.5 text-xs ${
-                activeTab ? 'font-medium text-foreground' : 'text-muted-foreground'
-              } ${spec.ready ? '' : 'opacity-60'}`}
-            >
+          const Icon =
+            spec.key === 'search'
+              ? Search
+              : spec.key === 'downloads'
+                ? Download
+                : spec.key === 'rankings'
+                  ? Trophy
+                  : LayoutGrid
+          const className = `flex min-h-14 flex-1 flex-col items-center justify-center gap-0.5 text-xs ${
+            activeTab ? 'font-medium text-foreground' : 'text-muted-foreground'
+          } ${spec.to ? '' : 'opacity-60'}`
+          const content = (
+            <>
               <Icon className="size-5" aria-hidden />
               {spec.label}
+            </>
+          )
+          return spec.to ? (
+            <Link
+              key={spec.key}
+              to={spec.to}
+              aria-current={activeTab ? 'page' : undefined}
+              title={spec.label}
+              className={className}
+            >
+              {content}
+            </Link>
+          ) : (
+            <span key={spec.key} aria-current={activeTab ? 'page' : undefined} title="即将上线" className={className}>
+              {content}
             </span>
           )
         })}
