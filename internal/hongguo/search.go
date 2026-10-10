@@ -6,10 +6,17 @@ package hongguo
 //   - 联想白名单 word_type 精确 5 值；防抖由前端做（server 不做）
 
 import (
+	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
+	"io"
+	"net/http"
+	"net/url"
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 	"unicode"
 
 	"golang.org/x/text/unicode/norm"
@@ -222,4 +229,122 @@ func maxInt(a, b int) int {
 		return a
 	}
 	return b
+}
+
+// ---- 联想（官网域 incent_resource/suggestion，无签名） ----
+
+// SuggestItem 联想条目：name 展示；type 为白名单 word_type（白名单外置空）；
+// 剧名联想带 series_id 可直达详情。
+type SuggestItem struct {
+	Name     string `json:"name"`
+	Type     string `json:"type"`                // 白名单 word_type，白名单外为 ""
+	SeriesID string `json:"series_id,omitempty"` // 有剧卡（video_data）时填
+}
+
+const (
+	suggestAppID  = "8662"
+	suggestLimit  = 10 // hongguoSuggestionLimit
+	namesCount    = 50 // 名称索引通道的联想拉取量
+	suggestBudget = 5 * time.Second
+)
+
+// suggestWhitelist 精确 5 值（guoapp fetchHongguoSearchSuggestions）。
+var suggestWhitelist = map[string]bool{
+	"short_play_name":     true,
+	"short_play_category": true,
+	"common_query":        true,
+	"actor_name":          true,
+	"short_play_actor":    true,
+}
+
+// webBase 官网域基址（可测试注入）。
+func (c *Client) webBase() string {
+	if c.WebBaseURL != "" {
+		return c.WebBaseURL
+	}
+	return webBaseURL
+}
+
+// Suggest 联想（≤10 条）：白名单 word_type、name 去重（忽略大小写）、
+// 过不了关键词校验的丢弃。防抖由前端负责，服务端不做。
+func (c *Client) Suggest(ctx context.Context, query string) ([]SuggestItem, error) {
+	kw, err := searchKeyword(query)
+	if err != nil {
+		return nil, err
+	}
+	ctx, cancel := context.WithTimeout(ctx, suggestBudget)
+	defer cancel()
+	records, err := c.fetchSuggestionRecords(ctx, kw, suggestLimit)
+	if err != nil {
+		return nil, err
+	}
+	items := make([]SuggestItem, 0, len(records))
+	seen := make(map[string]bool, len(records))
+	for _, rec := range records {
+		name := strings.TrimSpace(mapString(rec, "name"))
+		if _, err := searchKeyword(name); err != nil {
+			continue // name 过不了 1..80 校验 → 丢弃
+		}
+		key := strings.ToLower(name)
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		wordType := mapString(rec, "word_type")
+		if !suggestWhitelist[wordType] {
+			wordType = "" // 白名单外保留条目但 type 置空
+		}
+		item := SuggestItem{Name: name, Type: wordType}
+		if card, ok := rec["video_data"].(map[string]any); ok {
+			if id := mapString(card, "series_id_str", "series_id"); numericID.MatchString(id) {
+				item.SeriesID = id
+			}
+		}
+		items = append(items, item)
+		if len(items) >= suggestLimit {
+			break
+		}
+	}
+	return items, nil
+}
+
+// fetchSuggestionRecords 拉联想端点原始记录；
+// 响应兼容 {"suggest_list":…} 与 {"data":{"suggest_list":…}} 两种形态。
+func (c *Client) fetchSuggestionRecords(ctx context.Context, query string, count int) ([]map[string]any, error) {
+	u := c.webBase() + "/incent_resource/suggestion?" + url.Values{
+		"app_id": {suggestAppID},
+		"query":  {query},
+		"count":  {strconv.Itoa(count)},
+	}.Encode()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("User-Agent", webUA)
+	req.Header.Set("Referer", c.webBase()+"/")
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Accept-Language", "zh-CN,zh;q=0.9")
+	client := c.HTTP
+	if client == nil {
+		client = &http.Client{Timeout: 30 * time.Second}
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+			return nil, fmt.Errorf("联想接口 HTTP %d", resp.StatusCode)
+	}
+	var result map[string]any
+	dec := json.NewDecoder(io.LimitReader(resp.Body, maxBodyBytes))
+	dec.UseNumber()
+	if err := dec.Decode(&result); err != nil {
+		return nil, fmt.Errorf("联想响应解析失败: %w", err)
+	}
+	list, _ := result["suggest_list"].([]any)
+	if list == nil {
+		list, _ = nestedMap(result, "data")["suggest_list"].([]any)
+	}
+	return mapList(list), nil
 }

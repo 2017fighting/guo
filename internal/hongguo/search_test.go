@@ -1,6 +1,11 @@
 package hongguo
 
 import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 )
@@ -145,5 +150,127 @@ func TestSeasonSuffixParse(t *testing.T) {
 			t.Errorf("seasonSuffix(%q) = (%q,%q,%d,%v), want (%q,%q,%d,%v)",
 				tc.title, base, unit, num, ok, tc.base, tc.unit, tc.num, tc.ok)
 		}
+	}
+}
+
+// ---- 联想（guoapp-reference §3.2：incent_resource/suggestion，无签名，白名单 5 值） ----
+
+// suggestRecordFixture 联想记录。
+func suggestRecordFixture(name, wordType, seriesID string) map[string]any {
+	rec := map[string]any{"name": name, "word_type": wordType, "keyword": name}
+	if seriesID != "" {
+		rec["video_data"] = map[string]any{
+			"series_id_str": seriesID,
+			"series_title":  name,
+		}
+	}
+	return rec
+}
+
+func suggestResponse(records ...map[string]any) map[string]any {
+	list := make([]any, 0, len(records))
+	for _, r := range records {
+		list = append(list, r)
+	}
+	return map[string]any{"suggest_list": list}
+}
+
+func newWebTestClient(t *testing.T, handler http.HandlerFunc) *Client {
+	t.Helper()
+	srv := httptest.NewServer(handler)
+	t.Cleanup(srv.Close)
+	c := NewClient()
+	c.WebBaseURL = srv.URL
+	c.HTTP = srv.Client()
+	return c
+}
+
+func TestSuggestRequestAndFiltering(t *testing.T) {
+	var gotPath, gotAppID, gotQuery, gotCount, gotReferer, gotAccept string
+	c := newWebTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		gotAppID = r.URL.Query().Get("app_id")
+		gotQuery = r.URL.Query().Get("query")
+		gotCount = r.URL.Query().Get("count")
+		gotReferer = r.Header.Get("Referer")
+		gotAccept = r.Header.Get("Accept")
+		json.NewEncoder(w).Encode(suggestResponse(
+			suggestRecordFixture("宴律，你的白月光回国了", "short_play_name", "700001"),
+			suggestRecordFixture("白月光题材", "short_play_category", ""),
+			suggestRecordFixture("某演员", "actor_name", ""),
+			suggestRecordFixture("某剧演员", "short_play_actor", ""),
+			suggestRecordFixture("大家都在搜白月光", "common_query", ""),
+			// 白名单外：保留但 type 置空
+			suggestRecordFixture("小说推荐", "book_name", ""),
+			// 重名去重（忽略大小写）：BAI月光 先到，Bai月光 丢弃
+			suggestRecordFixture("BAI月光", "common_query", ""),
+			suggestRecordFixture("Bai月光", "actor_name", ""),
+			// 名字过不了 1..80 校验 → 丢弃
+			suggestRecordFixture(strings.Repeat("长", 81), "common_query", ""),
+		))
+	})
+
+	items, err := c.Suggest(context.Background(), "白月光")
+	if err != nil {
+		t.Fatalf("Suggest: %v", err)
+	}
+	if gotPath != "/incent_resource/suggestion" || gotAppID != "8662" || gotQuery != "白月光" || gotCount != "10" {
+		t.Fatalf("请求参数不对: path=%s app_id=%s query=%s count=%s", gotPath, gotAppID, gotQuery, gotCount)
+	}
+	if !strings.HasPrefix(gotReferer, "http") || gotAccept != "application/json" {
+		t.Fatalf("请求头不对: Referer=%q Accept=%q", gotReferer, gotAccept)
+	}
+	if len(items) != 7 {
+		t.Fatalf("条目数 = %d, want 7", len(items))
+	}
+	byName := map[string]SuggestItem{}
+	for _, it := range items {
+		byName[it.Name] = it
+	}
+	if it := byName["宴律，你的白月光回国了"]; it.Type != "short_play_name" || it.SeriesID != "700001" {
+		t.Fatalf("剧名联想应为白名单 type + series_id: %+v", it)
+	}
+	if it := byName["小说推荐"]; it.Type != "" {
+		t.Fatalf("白名单外应保留但 type 置空: %+v", it)
+	}
+	if _, dup := byName["Bai月光"]; dup {
+		t.Fatal("按 name 小写去重失败（白月光/Bai月光 应合并）")
+	}
+}
+
+func TestSuggestDataEnvelope(t *testing.T) {
+	// 两种响应形态都收：{"suggest_list":…} 与 {"data":{"suggest_list":…}}
+	c := newWebTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(map[string]any{
+			"data": suggestResponse(suggestRecordFixture("白月光", "short_play_name", "700002")),
+		})
+	})
+	items, err := c.Suggest(context.Background(), "白")
+	if err != nil || len(items) != 1 || items[0].SeriesID != "700002" {
+		t.Fatalf("data 信封形态解析失败: items=%+v err=%v", items, err)
+	}
+}
+
+func TestSuggestCapTen(t *testing.T) {
+	records := make([]map[string]any, 0, 15)
+	for i := 0; i < 15; i++ {
+		records = append(records, suggestRecordFixture(fmt.Sprintf("联想%d", i), "common_query", ""))
+	}
+	c := newWebTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(suggestResponse(records...))
+	})
+	items, err := c.Suggest(context.Background(), "联")
+	if err != nil {
+		t.Fatalf("Suggest: %v", err)
+	}
+	if len(items) != 10 {
+		t.Fatalf("条目数 = %d, want ≤10", len(items))
+	}
+}
+
+func TestSuggestInvalidKeyword(t *testing.T) {
+	c := NewClient()
+	if _, err := c.Suggest(context.Background(), "  "); err == nil {
+		t.Fatal("空关键词应报错")
 	}
 }
