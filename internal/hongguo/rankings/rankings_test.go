@@ -364,6 +364,60 @@ func TestBoardsTaxonomyFromPlanWithFallback(t *testing.T) {
 	}
 }
 
+// ---- 封面规范化：reading-sign 签名 HEIC 重写（v1.0.1 封面不渲染修复） ----
+
+func TestNormalizeCoverRewritesSignedHeic(t *testing.T) {
+	cases := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{
+			name: "带查询串的签名 HEIC 重写为 byteimg image",
+			in:   "https://p3-reading-sign.fqnovelpic.com/novel-pic/c7a1000~tplv-uv-t:400:0.heic?lk3s=1f3d20f0&x-signature=abcDEF",
+			want: "https://p3-novel.byteimg.com/novel-pic/c7a1000~tplv-shrink:640:0.image",
+		},
+		{
+			name: "已是 byteimg image 不动",
+			in:   "https://p9-novel.byteimg.com/novel-pic/c7a1000~tplv-shrink:640:0.image",
+			want: "https://p9-novel.byteimg.com/novel-pic/c7a1000~tplv-shrink:640:0.image",
+		},
+		{
+			name: "其他域名不动",
+			in:   "https://p3-reading.fqnovelpic.com/novel-pic/c7a1000~tplv-x:400:0.heic?lk3s=1",
+			want: "https://p3-reading.fqnovelpic.com/novel-pic/c7a1000~tplv-x:400:0.heic?lk3s=1",
+		},
+		{
+			name: "空串",
+			in:   "",
+			want: "",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := normalizeCover(tc.in); got != tc.want {
+				t.Fatalf("normalizeCover(%q) = %q, want %q", tc.in, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestItemFromVideoDataRewritesSignedHeicCover(t *testing.T) {
+	item, ok := itemFromVideoData(map[string]any{
+		"series_id": "7101",
+		"title":     "签名图剧",
+		"cover":     "https://p3-reading-sign.fqnovelpic.com/novel-pic/ab12~tplv-uv-t:400:0.heic?lk3s=x&x-signature=y",
+		"vertical":  true,
+	}, 1)
+	if !ok {
+		t.Fatal("item should parse")
+	}
+	want := "https://p3-novel.byteimg.com/novel-pic/ab12~tplv-shrink:640:0.image"
+	if item.Cover != want {
+		t.Fatalf("cover = %q, want %q", item.Cover, want)
+	}
+}
+
 // TestParseReplayBodies 回放抓包样本（docs/research/raw/bodies），锁定真机响应 schema。
 func TestParseReplayBodies(t *testing.T) {
 	sample := filepath.Join("..", "..", "..", "docs", "research", "raw", "bodies")
