@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/2017fighting/guo/internal/hongguo"
@@ -50,6 +51,7 @@ type streamPayload struct {
 	DurationMS int64           `json:"duration_ms"`
 	Vertical   bool            `json:"vertical"`
 	CENC       bool            `json:"cenc"` // CENC 加密流浏览器可能播不了（提示切线路）
+	HLS        bool            `json:"hls"`  // 上游是 HLS 清单（.m3u8）→ 前端用 hls.js
 }
 
 // handleEpisodeStream GET /api/v1/drama/{seriesID}/episodes/{vid}/stream?line=&quality=
@@ -86,7 +88,17 @@ func (s *Server) handleEpisodeStream(w http.ResponseWriter, r *http.Request) {
 		DurationMS: play.Stream.DurationMS,
 		Vertical:   play.Vertical,
 		CENC:       play.Stream.CENCKeyHex != "",
+		HLS:        isHLSURL(play.Stream.URL),
 	})
+}
+
+// isHLSURL 判别上游是否 HLS 清单（红果主流为 MP4 直链）。
+func isHLSURL(upstream string) bool {
+	parsed, err := url.Parse(upstream)
+	if err != nil {
+		return false
+	}
+	return strings.HasSuffix(strings.ToLower(parsed.Path), ".m3u8")
 }
 
 // handleStreamProxy GET /api/v1/stream/{seriesID}/{vid}?u=&line=&q=
