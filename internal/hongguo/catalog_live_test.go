@@ -55,4 +55,15 @@ func TestCatalogLiveSmoke(t *testing.T) {
 			t.Logf("selector_panel: %s", raw)
 		}
 	}
+
+	// genre=all 组合游标真机往返
+	all, err := c.CatalogPage(ctx, CatalogQuery{})
+	if err != nil {
+		t.Fatalf("真机 all 首轮失败: %v", err)
+	}
+	all2, err := c.CatalogPage(ctx, CatalogQuery{Offset: all.Offset, SessionID: all.SessionID})
+	if err != nil {
+		t.Fatalf("真机 all 翻页失败: %v", err)
+	}
+	t.Logf("all: 首轮=%d 条 第二轮=%d 条 has_more=%v offset=%d", len(all.Items), len(all2.Items), all2.HasMore, all2.Offset)
 }
