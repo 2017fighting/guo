@@ -4,6 +4,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { LoaderCircle } from 'lucide-react'
 import { api, ApiError } from '@/lib/api'
+import { dedupBy } from '@/lib/utils'
 import {
   EMPTY_FILTERS,
   filterCatalogItems,
@@ -77,10 +78,10 @@ export function BrowsePage() {
         if (seq !== seqRef.current) return // 已过期响应（genre 已切换），丢弃
         setFeed((prev) => {
           if (offset === 0) {
-            return { items: dedup(page.items), offset: page.offset, sessionId: page.session_id, hasMore: page.has_more }
+            return { items: dedupBy(page.items, (it) => it.series_id), offset: page.offset, sessionId: page.session_id, hasMore: page.has_more }
           }
           return {
-            items: dedup([...prev.items, ...page.items]),
+            items: dedupBy([...prev.items, ...page.items], (it) => it.series_id),
             offset: page.offset,
             sessionId: page.session_id,
             hasMore: page.has_more,
@@ -289,15 +290,4 @@ function FilterRow({
       )}
     </div>
   )
-}
-
-function dedup(items: readonly CatalogItem[]): CatalogItem[] {
-  const seen = new Set<string>()
-  const out: CatalogItem[] = []
-  for (const item of items) {
-    if (seen.has(item.series_id)) continue
-    seen.add(item.series_id)
-    out.push(item)
-  }
-  return out
 }

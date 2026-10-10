@@ -9,7 +9,8 @@ permissions:
 
 jobs:
   test:
-    # 门禁：测试不过不出镜像
+    # 门禁：测试不过不出镜像；同时预构建 web，TS 错误在 push 前暴露
+    # （镜像内 Dockerfile 自建前端，这里只做门禁拦截）。
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -18,6 +19,18 @@ jobs:
           go-version-file: go.mod
           cache: true
       - run: go test ./...
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10 # 兼容 lockfileVersion 9.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+        working-directory: web
+      - run: pnpm build
+        working-directory: web
 
   image:
     needs: test

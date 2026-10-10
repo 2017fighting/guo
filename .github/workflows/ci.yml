@@ -1,4 +1,4 @@
-# 日常 CI 门禁：两次发布标签之间也有 go vet + go test 兜底（lean，不装 node）。
+# 日常 CI 门禁：两次发布标签之间也有 go vet + go test + web 构建兜底。
 name: ci
 on:
   push:
@@ -19,3 +19,20 @@ jobs:
           cache: true # 按 go.sum 缓存模块
       - run: go vet ./...
       - run: go test ./...
+
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10 # 兼容 lockfileVersion 9.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+        working-directory: web
+      - run: pnpm build
+        working-directory: web

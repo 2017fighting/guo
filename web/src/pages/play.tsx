@@ -12,8 +12,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { VideoPlayer } from '@/components/player/video-player'
 import type { DramaDetail } from '@/types/drama'
 import type { DownloadJob } from '@/types/downloads'
-
-const GROUP_SIZE = 50 // 选集分组：50 集/组（与详情页同口径）
+import { episodeGroupAt, episodeGroups } from '@/lib/episode-groups'
 
 export function PlayPage() {
   const { seriesID = '', vid = '' } = useParams()
@@ -92,11 +91,8 @@ export function PlayPage() {
     }
   }
 
-  const groups: Array<{ start: number; end: number }> = []
-  for (let i = 0; i < episodes.length; i += GROUP_SIZE) {
-    groups.push({ start: i + 1, end: Math.min(i + GROUP_SIZE, episodes.length) })
-  }
-  const currentGroup = groups.find((g) => currentIndex + 1 >= g.start && currentIndex + 1 <= g.end) ?? groups[0]
+  const groups = episodeGroups(episodes.length)
+  const currentGroup = episodeGroupAt(groups, currentIndex + 1) ?? groups[0]
 
   return (
     <div>

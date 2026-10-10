@@ -1,6 +1,7 @@
 // 浏览页客户端排序/过滤 —— 语义逐条对齐 guoapp lib/catalog_sort.dart
 //（guoapp-reference §2.2：catalogMetric 解析、normalizedSearchText 名称序、
-// 降序指标 null 恒排末尾、tie-break 用源位置）。
+// 降序指标 null 恒排末尾；名称序按 spec §4 名称/季号——同剧按季号升序，
+// 其余 tie-break 用源位置）。
 
 import type { CatalogFilters, CatalogItem } from '@/types/catalog'
 
@@ -62,6 +63,89 @@ function descendingByMetric(pick: (item: CatalogItem) => string) {
   }
 }
 
+// 季号后缀识别：语义移植自 internal/hongguo/search.go seasonSuffix/
+// parseSeasonNumber——仅识别标题尾「第N季/第N部」（中文数字按十/百权位累加，
+// 阿拉伯数字直转；季号 1–9999）；非结尾后缀或解析失败不识别。
+const SEASON_NUMERAL = new Set(['零', '〇', '一', '二', '两', '三', '四', '五', '六', '七', '八', '九', '十', '百'])
+
+const CHINESE_DIGIT: Record<string, number> = {
+  一: 1,
+  二: 2,
+  两: 2,
+  三: 3,
+  四: 4,
+  五: 5,
+  六: 6,
+  七: 7,
+  八: 8,
+  九: 9,
+}
+
+function parseSeasonNumber(seg: string): number | null {
+  if (seg === '') return null
+  if (/^\d+$/.test(seg)) return Number.parseInt(seg, 10)
+  let total = 0
+  let cur = 0
+  for (const ch of seg) {
+    if (ch === '零' || ch === '〇') continue
+    if (ch === '十') {
+      total += Math.max(cur, 1) * 10
+      cur = 0
+      continue
+    }
+    if (ch === '百') {
+      total += Math.max(cur, 1) * 100
+      cur = 0
+      continue
+    }
+    const d = CHINESE_DIGIT[ch]
+    if (d === undefined) return null
+    cur = d
+  }
+  total += cur
+  if (total <= 0 || total > 9999) return null
+  return total
+}
+
+interface SeasonSuffix {
+  base: string
+  unit: string
+  num: number
+}
+
+function seasonSuffix(title: string): SeasonSuffix | null {
+  const runes = Array.from(title.trim())
+  if (runes.length < 3) return null
+  const tail = runes[runes.length - 1]!
+  if (tail !== '季' && tail !== '部') return null
+  for (let i = runes.length - 2; i >= 0; i--) {
+    const r = runes[i]!
+    if (r === '第') {
+      const num = parseSeasonNumber(runes.slice(i + 1, runes.length - 1).join(''))
+      const base = runes.slice(0, i).join('').trim()
+      if (num === null || base === '') break
+      return { base, unit: tail, num }
+    }
+    if (!SEASON_NUMERAL.has(r) && (r < '0' || r > '9')) break
+  }
+  return null
+}
+
+// compareByName 名称序（spec §4 名称/季号）：主键用去季号后缀的归一基名，
+// 让同剧各季在名称序里相邻；基名与单位一致时按季号数值升序（第2季 < 第10季，
+// 中文/阿拉伯数字同口径），其余交回 sort 稳定性保源位置。
+function compareByName(a: CatalogItem, b: CatalogItem): number {
+  const sa = seasonSuffix(a.title)
+  const sb = seasonSuffix(b.title)
+  const cmp = normalizedSearchText(sa ? sa.base : a.title).localeCompare(
+    normalizedSearchText(sb ? sb.base : b.title),
+    'zh',
+  )
+  if (cmp !== 0) return cmp
+  if (sa && sb && sa.base === sb.base && sa.unit === sb.unit) return sa.num - sb.num
+  return 0
+}
+
 // sortCatalogItems 排序副本（源顺序 tie-break 依赖 Array#sort 稳定性）。
 export function sortCatalogItems(items: readonly CatalogItem[], sort: SortKey): CatalogItem[] {
   const out = [...items]
@@ -76,9 +160,7 @@ export function sortCatalogItems(items: readonly CatalogItem[], sort: SortKey): 
       out.sort((a, b) => (b.online_date || '').localeCompare(a.online_date || ''))
       break
     case 'name':
-      out.sort((a, b) =>
-        normalizedSearchText(a.title).localeCompare(normalizedSearchText(b.title), 'zh'),
-      )
+      out.sort(compareByName)
       break
   }
   return out

@@ -3,15 +3,14 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { LoaderCircle, Play, Plus, Download } from 'lucide-react'
+import { LoaderCircle, Play, Download } from 'lucide-react'
 import { api, apiPost, ApiError } from '@/lib/api'
+import { episodeGroupAt, episodeGroups, episodesInGroup } from '@/lib/episode-groups'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Modal } from '@/components/modal'
 import type { DramaDetail } from '@/types/drama'
 import type { DownloadJob } from '@/types/downloads'
-
-const GROUP_SIZE = 50 // Miller 分组：50 集/组
 
 const QUALITY_OPTIONS: ReadonlyArray<{ value: number; label: string }> = [
   { value: 0, label: '最高（1080p）' },
@@ -45,20 +44,13 @@ export function DramaPage() {
       })
   }, [seriesID])
 
-  const groups = useMemo(() => {
-    const eps = detail?.episodes ?? []
-    const out: Array<{ start: number; end: number }> = []
-    for (let i = 0; i < eps.length; i += GROUP_SIZE) {
-      out.push({ start: i + 1, end: Math.min(i + GROUP_SIZE, eps.length) })
-    }
-    return out
-  }, [detail])
+  const groups = useMemo(() => episodeGroups(detail?.episodes.length ?? 0), [detail])
 
-  const currentGroup = groups.find((g) => groupStart >= g.start && groupStart <= g.end) ?? groups[0]
-  const groupEpisodes = useMemo(() => {
-    if (!detail || !currentGroup) return []
-    return detail.episodes.filter((e) => e.index >= currentGroup.start && e.index <= currentGroup.end)
-  }, [detail, currentGroup])
+  const currentGroup = episodeGroupAt(groups, groupStart) ?? groups[0]
+  const groupEpisodes = useMemo(
+    () => episodesInGroup(detail?.episodes ?? [], currentGroup),
+    [detail, currentGroup],
+  )
 
   if (phase === 'loading') {
     return (
@@ -144,9 +136,6 @@ export function DramaPage() {
                 <Download data-icon="inline-start" aria-hidden />
                 下载本剧
               </Button>
-              <Button variant="outline" size="icon" title="追剧（规划中）" disabled>
-                <Plus aria-hidden />
-              </Button>
             </div>
           </div>
         </CardContent>
@@ -226,14 +215,9 @@ function DownloadDialog({
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const groups: Array<{ start: number; end: number }> = []
-  for (let i = 0; i < detail.episodes.length; i += GROUP_SIZE) {
-    groups.push({ start: i + 1, end: Math.min(i + GROUP_SIZE, detail.episodes.length) })
-  }
-  const currentGroup = groups.find((g) => groupStart >= g.start && groupStart <= g.end) ?? groups[0]
-  const groupEpisodes = detail.episodes.filter(
-    (e) => e.index >= currentGroup.start && e.index <= currentGroup.end,
-  )
+  const groups = episodeGroups(detail.episodes.length)
+  const currentGroup = episodeGroupAt(groups, groupStart) ?? groups[0]
+  const groupEpisodes = episodesInGroup(detail.episodes, currentGroup)
 
   const toggle = useCallback((index: number) => {
     setSelected((prev) => {
